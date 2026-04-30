@@ -3,6 +3,17 @@
 ## Commit messages
 Do not include a "Co-Authored-By" footer or any indication that Claude wrote the commit.
 
+## Testing
+Always include `// Arrange`, `// Act`, and `// Assert` comments in test methods to delineate the three phases.
+
+When prompted to generate tests, present the tests for approval before writing any production code or test infrastructure.
+
+## Design principles
+Always apply the SOLID principles (Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion).
+
+## Code quality
+When changing a function, check its cyclomatic complexity. If it exceeds 5, report the function name and complexity value to the user.
+
 ## Development
 Always use Test Driven Development. Prefer BDD-style acceptance tests over unit tests. Never write production code without first having a failing acceptance test or failing unit test.
 
