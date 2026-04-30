@@ -1,0 +1,12 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  pipeline:
+    uses: tadams1138/war-infra/.github/workflows/api.yml@master
+    with:
+      deploy: true
+    secrets: inherit
