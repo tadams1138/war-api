@@ -23,6 +23,9 @@
       "Bash(git diff*)",
       "Bash(git branch*)",
       "Bash(npm run*)",
+      "Bash(npm ci:*)",
+      "Bash(npm test:*)",
+      "Bash(npx tsc:*)",
       "Bash(ls*)",
       "Bash(cat*)"
     ],

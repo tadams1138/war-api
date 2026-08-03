@@ -1,0 +1,64 @@
+import cookie from '@fastify/cookie';
+import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
+import Fastify, { type FastifyInstance } from 'fastify';
+import type { Kysely } from 'kysely';
+import type { Database } from './db/types.js';
+import type { AuthDependencies } from './auth/authService.js';
+import type { GoogleAuthProvider } from './auth/googleProvider.js';
+import { registerAuthRoutes } from './auth/routes.js';
+import type { ObjectStorage } from './contestants/storage.js';
+import { registerContestantsRoutes } from './contestants/routes.js';
+import { registerMatchupsRoutes } from './matchups/routes.js';
+import { registerRankingsRoutes } from './rankings/routes.js';
+import { registerWarsRoutes } from './wars/routes.js';
+import type { AppConfig } from './config.js';
+
+export interface AppDeps {
+  db: Kysely<Database>;
+  google: GoogleAuthProvider;
+  storage: ObjectStorage;
+  config: AppConfig;
+}
+
+const API_PREFIX = '/api/v1';
+
+export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
+  const app = Fastify({ logger: false });
+
+  await app.register(cookie);
+  await app.register(cors, { origin: deps.config.uiOrigins, credentials: true });
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
+
+  const authDeps: AuthDependencies = {
+    db: deps.db,
+    google: deps.google,
+    jwt: { secret: deps.config.jwtSecret, issuer: deps.config.jwtIssuer },
+  };
+
+  await app.register(
+    async (instance) => {
+      registerAuthRoutes(instance, authDeps, {
+        uiOrigins: deps.config.uiOrigins,
+        googleRedirectUri: deps.config.google.redirectUri,
+      });
+      registerWarsRoutes(instance, {
+        db: deps.db,
+        auth: authDeps,
+        publicBaseUrl: deps.config.s3.publicBaseUrl,
+        internalTaskToken: deps.config.internalTaskToken,
+      });
+      registerContestantsRoutes(instance, {
+        db: deps.db,
+        auth: authDeps,
+        storage: deps.storage,
+        publicBaseUrl: deps.config.s3.publicBaseUrl,
+      });
+      registerMatchupsRoutes(instance, { db: deps.db, auth: authDeps, publicBaseUrl: deps.config.s3.publicBaseUrl });
+      registerRankingsRoutes(instance, { db: deps.db, auth: authDeps, publicBaseUrl: deps.config.s3.publicBaseUrl });
+    },
+    { prefix: API_PREFIX },
+  );
+
+  return app;
+}

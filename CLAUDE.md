@@ -19,3 +19,19 @@ Red-Green-Refactor cycle:
 2. Write only enough production code to make the test pass
 3. Refactor
 4. Repeat until there are no more tests to write
+
+## Build and test
+
+All commands run from the repository root. No `cd`.
+
+- install: `npm ci`
+- lint: `npm run lint`
+- typecheck: `npx tsc --noEmit`
+- migrate (test DB): `npm run migrate`
+- test (unit + integration + acceptance): `npm test`
+- test (scoped): `npm test -- -t "<name>"`
+
+These mirror the reusable pipeline in `war-infra/.github/workflows/api.yml` (§8.1 of
+`war-infra-spec.md`) exactly, so local runs match CI. Integration/acceptance tests
+connect via `DATABASE_URL` when set (as CI's `postgres:16-alpine` service provides) and
+fall back to a local Testcontainers Postgres when it is unset.
