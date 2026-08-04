@@ -49,12 +49,18 @@ export async function castVoteForVoter(
     return { kind: 'invalidWinner' };
   }
 
+  // Cheap fast path preserving the existing pre-check messages; the
+  // repository's ON CONFLICT is the real arbiter for a concurrent retry
+  // (design review finding 2), since two requests can both pass this check.
   const existing = await findVote(db, input.matchupId, input.voterId);
   if (existing) {
     return existing.winnerId === input.winnerId ? { kind: 'retried' } : { kind: 'conflict' };
   }
 
   const presentedLeftId = isLeftSide(matchup.id, input.voterId) ? matchup.contestantAId : matchup.contestantBId;
-  const vote = await castVote(db, matchup, input.voterId, input.winnerId, presentedLeftId);
-  return { kind: 'created', vote };
+  const result = await castVote(db, matchup, input.voterId, input.winnerId, presentedLeftId);
+  if (!result.inserted) {
+    return result.vote.winnerId === input.winnerId ? { kind: 'retried' } : { kind: 'conflict' };
+  }
+  return { kind: 'created', vote: result.vote };
 }

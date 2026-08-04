@@ -59,18 +59,20 @@ describe('isLeftSide', () => {
     expect(first).toBe(second);
   });
 
-  it('is derived from an even/odd hash digit as described in the spec', () => {
-    // Arrange
-    const matchupId = 'm1';
+  it('depends on its inputs rather than being a constant value', () => {
+    // Arrange: recomputing the same digest with the same library restates
+    // the implementation and can never fail while it stays internally
+    // consistent (design review finding 11). Instead, assert the property
+    // the spec actually needs: across a spread of matchup ids, both sides
+    // occur — a constant-true or constant-false implementation would fail.
     const voterId = 'v1';
-    const hash = createHash('md5').update(`${matchupId}${voterId}side`).digest('hex');
-    const lastNibble = parseInt(hash.at(-1) as string, 16);
-    const expected = lastNibble % 2 === 0;
+    const matchupIds = Array.from({ length: 20 }, (_, i) => `matchup-${i}`);
 
     // Act
-    const result = isLeftSide(matchupId, voterId);
+    const results = matchupIds.map((matchupId) => isLeftSide(matchupId, voterId));
 
     // Assert
-    expect(result).toBe(expected);
+    expect(results).toContain(true);
+    expect(results).toContain(false);
   });
 });

@@ -59,6 +59,7 @@ export async function uploadContestantImage(
     originalExt: input.originalExt,
     width: processed.original.width,
     height: processed.original.height,
+    variantWidths: processed.variants.map((variant) => variant.width),
   });
 
   return { ok: true, media };

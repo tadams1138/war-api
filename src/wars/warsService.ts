@@ -4,8 +4,9 @@ import { validateSchemaDefinition, type ContestantSchemaField } from '../contest
 import { listContestantsByWar } from '../contestants/contestantsRepository.js';
 import { countMediaByContestant } from '../contestants/contestantMediaRepository.js';
 import { generateMatchups } from '../matchups/matchupsRepository.js';
-import type { MutationOutcome } from '../shared/outcomes.js';
+import type { Forbidden, MutationOutcome, NotActive, NotFound } from '../shared/outcomes.js';
 import { effectiveStatus } from './effectiveStatus.js';
+import { loadDraftWarOwnedBy, loadWarOwnedBy } from './warAccess.js';
 import {
   createMembership,
   createWar,
@@ -105,10 +106,8 @@ export async function patchWar(
   input: PatchWarInput,
   now: Date,
 ): Promise<MutationOutcome<War>> {
-  const war = await findWarById(db, warId);
-  if (!war) return { kind: 'notFound' };
-  if (war.creatorId !== voterId) return { kind: 'forbidden' };
-  if (effectiveStatus(war, now) !== 'draft') return { kind: 'notDraft' };
+  const guard = await loadDraftWarOwnedBy(db, warId, voterId, now);
+  if (guard.kind !== 'ok') return guard;
 
   const patch: WarPatch = {};
   const errors: string[] = [];
@@ -159,19 +158,12 @@ export async function patchWar(
   return { kind: 'ok', value: updated };
 }
 
-export type ActivateOutcome =
-  | { kind: 'ok'; value: War }
-  | { kind: 'notFound' }
-  | { kind: 'forbidden' }
-  | { kind: 'notDraft' }
-  | { kind: 'validationError'; errors: string[] };
+export type ActivateOutcome = MutationOutcome<War>;
 
 /** draft → active: requires ≥2 contestants, each with ≥1 image (spec §8.2). */
 export async function activateWar(db: Kysely<Database>, warId: string, voterId: string, now: Date): Promise<ActivateOutcome> {
-  const war = await findWarById(db, warId);
-  if (!war) return { kind: 'notFound' };
-  if (war.creatorId !== voterId) return { kind: 'forbidden' };
-  if (effectiveStatus(war, now) !== 'draft') return { kind: 'notDraft' };
+  const guard = await loadDraftWarOwnedBy(db, warId, voterId, now);
+  if (guard.kind !== 'ok') return guard;
 
   const contestants = await listContestantsByWar(db, warId);
   if (contestants.length < 2) {
@@ -188,19 +180,18 @@ export async function activateWar(db: Kysely<Database>, warId: string, voterId: 
   return { kind: 'ok', value: activated };
 }
 
-export type CloseOutcome = { kind: 'ok'; value: War } | { kind: 'notFound' } | { kind: 'forbidden' } | { kind: 'notActive' };
+export type CloseOutcome = MutationOutcome<War, NotFound | Forbidden | NotActive>;
 
 export async function closeWar(db: Kysely<Database>, warId: string, voterId: string, now: Date): Promise<CloseOutcome> {
-  const war = await findWarById(db, warId);
-  if (!war) return { kind: 'notFound' };
-  if (war.creatorId !== voterId) return { kind: 'forbidden' };
-  if (effectiveStatus(war, now) !== 'active') return { kind: 'notActive' };
+  const guard = await loadWarOwnedBy(db, warId, voterId, now, 'active');
+  if (guard.kind === 'wrongStatus') return { kind: 'notActive' };
+  if (guard.kind !== 'ok') return guard;
 
   const closed = await setWarStatus(db, warId, 'closed');
   return { kind: 'ok', value: closed };
 }
 
-export type JoinOutcome = { kind: 'ok' } | { kind: 'notFound' } | { kind: 'notActive' };
+export type JoinOutcome = MutationOutcome<void, NotFound | NotActive>;
 
 export async function joinWar(db: Kysely<Database>, warId: string, voterId: string, now: Date): Promise<JoinOutcome> {
   const war = await findWarById(db, warId);
@@ -210,5 +201,5 @@ export async function joinWar(db: Kysely<Database>, warId: string, voterId: stri
   if (!(await isMember(db, warId, voterId))) {
     await createMembership(db, warId, voterId);
   }
-  return { kind: 'ok' };
+  return { kind: 'ok', value: undefined };
 }

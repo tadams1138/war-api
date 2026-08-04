@@ -55,14 +55,34 @@ export async function createRefreshTokenFamily(
   return toStored(row);
 }
 
-/** Marks a token used and inserts its rotated successor, same family (spec §5.2). */
+export type RotateResult = { kind: 'rotated'; token: StoredRefreshToken } | { kind: 'lost-race' };
+
+/**
+ * Marks a token used and inserts its rotated successor, same family (spec
+ * §5.2). The marking UPDATE is conditional on the token still being unused
+ * and unrevoked, and its affected-row count is the arbiter: if a concurrent
+ * call already rotated this exact token, this call loses the race and must
+ * not also mint a successor, or reuse detection could never trigger (design
+ * review finding 1). The DB, not application code, decides who won.
+ */
 export async function rotateRefreshToken(
   db: Kysely<Database>,
   used: StoredRefreshToken,
   newTokenHash: string,
-): Promise<StoredRefreshToken> {
+): Promise<RotateResult> {
   return db.transaction().execute(async (trx) => {
-    await trx.updateTable('refresh_tokens').set({ used_at: new Date() }).where('id', '=', used.id).execute();
+    const claimed = await trx
+      .updateTable('refresh_tokens')
+      .set({ used_at: new Date() })
+      .where('id', '=', used.id)
+      .where('used_at', 'is', null)
+      .where('revoked_at', 'is', null)
+      .returning('id')
+      .execute();
+
+    if (claimed.length === 0) {
+      return { kind: 'lost-race' };
+    }
 
     const row = await trx
       .insertInto('refresh_tokens')
@@ -75,7 +95,7 @@ export async function rotateRefreshToken(
       })
       .returningAll()
       .executeTakeFirstOrThrow();
-    return toStored(row);
+    return { kind: 'rotated', token: toStored(row) };
   });
 }
 

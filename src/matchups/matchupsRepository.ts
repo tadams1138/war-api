@@ -1,6 +1,6 @@
-import type { Kysely } from 'kysely';
+import type { Kysely, Selectable } from 'kysely';
 import { sql } from 'kysely';
-import type { Database } from '../db/types.js';
+import type { Database, MatchupsTable } from '../db/types.js';
 import { newId } from '../db/uuid.js';
 
 export interface Matchup {
@@ -10,14 +10,13 @@ export interface Matchup {
   contestantBId: string;
 }
 
-interface MatchupRow {
-  id: string;
-  war_id: string;
-  contestant_a_id: string;
-  contestant_b_id: string;
-}
+/** The four matchup columns `findUnvotedMatchupsForVoter`'s joined query
+ * selects explicitly, picked from `Selectable<MatchupsTable>` rather than
+ * hand-declared, so the column list can't drift from `db/types.ts`
+ * (design review finding 12). */
+type MatchupColumns = Pick<Selectable<MatchupsTable>, 'id' | 'war_id' | 'contestant_a_id' | 'contestant_b_id'>;
 
-function toMatchup(row: MatchupRow): Matchup {
+function toMatchup(row: MatchupColumns): Matchup {
   return { id: row.id, warId: row.war_id, contestantAId: row.contestant_a_id, contestantBId: row.contestant_b_id };
 }
 
@@ -51,46 +50,17 @@ export async function countMatchupsForWar(db: Kysely<Database>, warId: string): 
 
 export async function findMatchupById(db: Kysely<Database>, id: string): Promise<Matchup | undefined> {
   const row = await db.selectFrom('matchups').selectAll().where('id', '=', id).executeTakeFirst();
-  return row ? toMatchup(row as unknown as MatchupRow) : undefined;
+  return row ? toMatchup(row) : undefined;
 }
 
 /**
- * The voter's unvoted pair whose contestants have the lowest combined
- * appearance_count, ties broken by a stable per-voter shuffle (spec §8.4).
- */
-export async function findNextMatchupForVoter(
-  db: Kysely<Database>,
-  warId: string,
-  voterId: string,
-): Promise<Matchup | undefined> {
-  const row = await db
-    .selectFrom('matchups as m')
-    .innerJoin('contestants as ca', 'ca.id', 'm.contestant_a_id')
-    .innerJoin('contestants as cb', 'cb.id', 'm.contestant_b_id')
-    .select(['m.id as id', 'm.war_id as war_id', 'm.contestant_a_id as contestant_a_id', 'm.contestant_b_id as contestant_b_id'])
-    .where('m.war_id', '=', warId)
-    .where(({ not, exists, selectFrom }) =>
-      not(
-        exists(
-          selectFrom('votes as v')
-            .select('v.id')
-            .whereRef('v.matchup_id', '=', 'm.id')
-            .where('v.voter_id', '=', voterId),
-        ),
-      ),
-    )
-    .orderBy(sql`(ca.appearance_count + cb.appearance_count)`, 'asc')
-    .orderBy(sql`md5(m.id::text || ${voterId}::text)`, 'asc')
-    .limit(1)
-    .executeTakeFirst();
-
-  return row ? toMatchup(row as unknown as MatchupRow) : undefined;
-}
-
-/**
- * Every pair the voter has not yet voted on, in the same stable order
- * `findNextMatchupForVoter` would serve them — used to compute the
- * prefetch block (spec §8.4).
+ * Every pair the voter has not yet voted on, ordered by lowest combined
+ * appearance_count with ties broken by a stable per-voter shuffle (spec
+ * §8.4) — the first row is the voter's next matchup; further rows compute
+ * the prefetch block. The `md5(...)` tie-break here is the SQL twin of
+ * `stableHash` in `src/matchups/stableHash.ts`, which mirrors this exact
+ * expression so tests can predict the order without hitting the database;
+ * change the two together.
  */
 export async function findUnvotedMatchupsForVoter(
   db: Kysely<Database>,
@@ -119,7 +89,7 @@ export async function findUnvotedMatchupsForVoter(
     .limit(limit)
     .execute();
 
-  return rows.map((row) => toMatchup(row as unknown as MatchupRow));
+  return rows.map((row) => toMatchup(row));
 }
 
 export async function countVotesByVoterInWar(db: Kysely<Database>, warId: string, voterId: string): Promise<number> {

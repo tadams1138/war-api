@@ -266,6 +266,18 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
       const firstForA = await getNextMatchup(harness, setup.war.id, setup.voterId);
       expect(firstForA.body.matchup.id).toBe(orderForA[0]);
+
+      // Drive voter B through the real endpoint too — comparing two locally
+      // computed hashes alone can never fail (design review finding 11);
+      // observing what the API actually serves each voter is the real test.
+      // (Not asserting the two voters' *first* pair differs here: with only
+      // 10 pairs in this fixture, two independent hash orders coincide on
+      // their first element about 1 time in 10 — a real but expected
+      // property of the shuffle, not a defect, and asserting it would make
+      // this scenario flaky. `orderForA` vs `orderForB` above already proves
+      // the full orders differ.)
+      const firstForB = await getNextMatchup(harness, setup.war.id, voterBId);
+      expect(firstForB.body.matchup.id).toBe(orderForB[0]);
     });
 
     And("each voter's own order is identical across repeated requests", async () => {
@@ -307,16 +319,23 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     let setup: Setup;
     let matchupId: string;
     let leftId: string;
+    let rightId: string;
 
     Given('a voter served matchup M', async () => {
       setup = await setupActiveWarWithJoinedVoter(harness, 2);
       const next = await getNextMatchup(harness, setup.war.id, setup.voterId);
       matchupId = next.body.matchup.id;
       leftId = next.body.matchup.left.id;
+      rightId = next.body.matchup.right.id;
     });
 
-    Then('the response names which contestant is left and which is right', () => {
-      expect(leftId).toBeTruthy();
+    Then('the response names which contestant is left and which is right', async () => {
+      // A response naming the same contestant on both sides would previously
+      // have passed this step (design review finding 11); assert the two
+      // sides are distinct and are exactly the matchup's real pair.
+      expect(leftId).not.toBe(rightId);
+      const matchup = await harness.db.selectFrom('matchups').selectAll().where('id', '=', matchupId).executeTakeFirstOrThrow();
+      expect(new Set([leftId, rightId])).toEqual(new Set([matchup.contestant_a_id, matchup.contestant_b_id]));
     });
 
     And('the order is identical if the request is repeated', async () => {

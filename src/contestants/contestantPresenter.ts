@@ -1,7 +1,5 @@
-import type { Kysely } from 'kysely';
-import type { Database } from '../db/types.js';
 import type { War } from '../wars/warsRepository.js';
-import { listMediaByContestant } from './contestantMediaRepository.js';
+import type { ContestantMedia } from './contestantMediaRepository.js';
 import type { Contestant } from './contestantsRepository.js';
 import { presentMedia, type MediaItemView } from './mediaPresenter.js';
 import { resolveAttributes, type ResolvedAttribute } from './schemaValidation.js';
@@ -16,13 +14,19 @@ export interface ContestantDetailView {
   appearance_count: number;
 }
 
-export async function presentContestant(
-  db: Kysely<Database>,
+/**
+ * Builds a contestant's detail view from media the caller already fetched,
+ * rather than fetching it itself — the N+1 alternative (one query per
+ * contestant) is what War detail used to pay on every request (design
+ * review finding 9). `presentWarDetail` batches the fetch for all of a
+ * War's contestants; single-contestant callers pass a one-element result.
+ */
+export function presentContestant(
   contestant: Contestant,
   war: War,
+  media: ContestantMedia[],
   publicBaseUrl: string,
-): Promise<ContestantDetailView> {
-  const media = await listMediaByContestant(db, contestant.id);
+): ContestantDetailView {
   return {
     id: contestant.id,
     name: contestant.name,

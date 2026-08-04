@@ -1,6 +1,7 @@
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
 import { listContestantsByWar } from '../contestants/contestantsRepository.js';
+import { listMediaByContestants } from '../contestants/contestantMediaRepository.js';
 import { presentContestant, type ContestantDetailView } from '../contestants/contestantPresenter.js';
 import { effectiveStatus } from './effectiveStatus.js';
 import type { War } from './warsRepository.js';
@@ -40,6 +41,10 @@ export async function presentWarDetail(
   publicBaseUrl: string,
 ): Promise<WarDetailView> {
   const contestants = await listContestantsByWar(db, war.id);
-  const views = await Promise.all(contestants.map((c) => presentContestant(db, c, war, publicBaseUrl)));
+  const mediaByContestant = await listMediaByContestants(
+    db,
+    contestants.map((c) => c.id),
+  );
+  const views = contestants.map((c) => presentContestant(c, war, mediaByContestant.get(c.id) ?? [], publicBaseUrl));
   return { ...presentWarSummary(war, now), contestants: views };
 }

@@ -2,13 +2,24 @@ import type { ColumnType, Generated } from 'kysely';
 
 type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
+/**
+ * A database-generated timestamp column (e.g. `created_at DEFAULT now()`):
+ * always a `Date` on select, optionally `Date | string` on insert, `Date |
+ * string` on update. Spelled out directly rather than as `Generated<Timestamp>`
+ * — `Generated<S>` assumes `S` is a plain type, so wrapping the `Timestamp`
+ * `ColumnType` in another `ColumnType` would double-wrap it and fail to
+ * flatten to `Date` under Kysely's `Selectable<>` (used throughout the
+ * repositories, design review finding 12).
+ */
+type GeneratedTimestamp = ColumnType<Date, Date | string | undefined, Date | string>;
+
 export interface VotersTable {
   id: string;
   provider: string;
   provider_user_id: string;
   display_name: string | null;
   avatar_url: string | null;
-  created_at: Generated<Timestamp>;
+  created_at: GeneratedTimestamp;
 }
 
 export interface WarsTable {
@@ -22,7 +33,7 @@ export interface WarsTable {
   contestant_schema: Generated<unknown>;
   ends_at: Timestamp | null;
   ui_slug: string | null;
-  created_at: Generated<Timestamp>;
+  created_at: GeneratedTimestamp;
 }
 
 export interface ContestantsTable {
@@ -33,7 +44,7 @@ export interface ContestantsTable {
   attributes: Generated<unknown>;
   win_count: Generated<number>;
   appearance_count: Generated<number>;
-  created_at: Generated<Timestamp>;
+  created_at: GeneratedTimestamp;
 }
 
 export interface RefreshTokensTable {
@@ -44,7 +55,7 @@ export interface RefreshTokensTable {
   expires_at: Timestamp;
   used_at: Timestamp | null;
   revoked_at: Timestamp | null;
-  created_at: Generated<Timestamp>;
+  created_at: GeneratedTimestamp;
 }
 
 export interface ContestantMediaTable {
@@ -63,7 +74,8 @@ export interface ContestantMediaTable {
   duration_seconds: Generated<number>;
   poster_url: string | null;
   title: string | null;
-  created_at: Generated<Timestamp>;
+  variant_widths: number[] | null;
+  created_at: GeneratedTimestamp;
 }
 
 export interface MatchupsTable {
@@ -71,13 +83,13 @@ export interface MatchupsTable {
   war_id: string;
   contestant_a_id: string;
   contestant_b_id: string;
-  created_at: Generated<Timestamp>;
+  created_at: GeneratedTimestamp;
 }
 
 export interface WarMembershipsTable {
   war_id: string;
   voter_id: string;
-  joined_at: Generated<Timestamp>;
+  joined_at: GeneratedTimestamp;
 }
 
 export interface VotesTable {
@@ -86,7 +98,7 @@ export interface VotesTable {
   voter_id: string;
   winner_id: string;
   presented_left_id: string;
-  created_at: Generated<Timestamp>;
+  created_at: GeneratedTimestamp;
 }
 
 export interface Database {

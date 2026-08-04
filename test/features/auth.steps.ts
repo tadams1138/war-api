@@ -230,6 +230,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
   Scenario('Reusing a rotated refresh token revokes the family', ({ Given, When, Then, And }) => {
     let usedToken: string;
+    let successorToken: string;
     let familyId: string;
     let reuseResponse: request.Response;
 
@@ -242,7 +243,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       usedToken = result.refreshTokenValue;
       const stored = await findRefreshTokenByHash(harness.db, hashRefreshToken(usedToken));
       familyId = stored!.familyId;
-      await postRefresh(harness, usedToken); // rotate it once
+      const rotateResponse = await postRefresh(harness, usedToken); // rotate it once
+      successorToken = extractCookieValue(rotateResponse.get('Set-Cookie'), 'refresh_token')!;
     });
 
     When('it is presented again', async () => {
@@ -260,7 +262,6 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
 
     And('the voter must re-authenticate', async () => {
-      const stored = await findRefreshTokenByHash(harness.db, hashRefreshToken(usedToken));
       const rotatedRows = await harness.db
         .selectFrom('refresh_tokens')
         .selectAll()
@@ -270,7 +271,12 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       // The latest (rotated) token in the family is revoked too, so no
       // further refresh in this family can succeed without a fresh login.
       expect(rotatedRows.every((row) => row.revoked_at !== null)).toBe(true);
-      expect(stored).toBeDefined();
+
+      // "Must re-authenticate" means a client asking the API is turned away
+      // (design review finding 11) — not merely that a row is present in the
+      // table. Presenting the still-valid-looking successor token now fails.
+      const successorRefreshAttempt = await postRefresh(harness, successorToken);
+      expect(successorRefreshAttempt.status).toBe(401);
     });
   });
 

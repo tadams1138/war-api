@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
-import { effectiveStatus } from '../wars/effectiveStatus.js';
-import { findWarById } from '../wars/warsRepository.js';
+import { loadDraftWarOwnedBy } from '../wars/warAccess.js';
+import type { War } from '../wars/warsRepository.js';
 import type { MutationOutcome } from '../shared/outcomes.js';
 import { validateAttributes } from './schemaValidation.js';
 import {
@@ -20,30 +20,24 @@ export interface CreateContestantInput {
   attributes?: Record<string, unknown>;
 }
 
-async function assertDraftWarOwnedBy(
-  db: Kysely<Database>,
-  warId: string,
-  voterId: string,
-  now: Date,
-): Promise<{ kind: 'ok' } | { kind: 'notFound' } | { kind: 'forbidden' } | { kind: 'notDraft' }> {
-  const war = await findWarById(db, warId);
-  if (!war) return { kind: 'notFound' };
-  if (war.creatorId !== voterId) return { kind: 'forbidden' };
-  if (effectiveStatus(war, now) !== 'draft') return { kind: 'notDraft' };
-  return { kind: 'ok' };
+/** A Contestant alongside the War it belongs to, so callers presenting the
+ * response never need to re-fetch the War the guard already loaded. */
+export interface ContestantWithWar {
+  contestant: Contestant;
+  war: War;
 }
 
 export async function addContestant(
   db: Kysely<Database>,
   input: CreateContestantInput,
   now: Date,
-): Promise<MutationOutcome<Contestant>> {
-  const guard = await assertDraftWarOwnedBy(db, input.warId, input.voterId, now);
+): Promise<MutationOutcome<ContestantWithWar>> {
+  const guard = await loadDraftWarOwnedBy(db, input.warId, input.voterId, now);
   if (guard.kind !== 'ok') return guard;
+  const { war } = guard;
 
-  const war = await findWarById(db, input.warId);
   const attributes = input.attributes ?? {};
-  const validated = validateAttributes(war!.contestantSchema, attributes);
+  const validated = validateAttributes(war.contestantSchema, attributes);
   if (!validated.ok) {
     return { kind: 'validationError', errors: validated.errors };
   }
@@ -58,7 +52,7 @@ export async function addContestant(
     bio: input.bio ?? null,
     attributes,
   });
-  return { kind: 'ok', value: contestant };
+  return { kind: 'ok', value: { contestant, war } };
 }
 
 export interface PatchContestantInput {
@@ -74,16 +68,16 @@ export async function patchContestant(
   voterId: string,
   input: PatchContestantInput,
   now: Date,
-): Promise<MutationOutcome<Contestant>> {
-  const guard = await assertDraftWarOwnedBy(db, warId, voterId, now);
+): Promise<MutationOutcome<ContestantWithWar>> {
+  const guard = await loadDraftWarOwnedBy(db, warId, voterId, now);
   if (guard.kind !== 'ok') return guard;
+  const { war } = guard;
 
   const contestant = await findContestantById(db, contestantId);
   if (!contestant || contestant.warId !== warId) return { kind: 'notFound' };
 
-  const war = await findWarById(db, warId);
   if (input.attributes !== undefined) {
-    const validated = validateAttributes(war!.contestantSchema, input.attributes);
+    const validated = validateAttributes(war.contestantSchema, input.attributes);
     if (!validated.ok) {
       return { kind: 'validationError', errors: validated.errors };
     }
@@ -97,7 +91,7 @@ export async function patchContestant(
     bio: input.bio,
     attributes: input.attributes,
   });
-  return { kind: 'ok', value: updated };
+  return { kind: 'ok', value: { contestant: updated, war } };
 }
 
 export async function removeContestant(
@@ -107,7 +101,7 @@ export async function removeContestant(
   voterId: string,
   now: Date,
 ): Promise<MutationOutcome<void>> {
-  const guard = await assertDraftWarOwnedBy(db, warId, voterId, now);
+  const guard = await loadDraftWarOwnedBy(db, warId, voterId, now);
   if (guard.kind !== 'ok') return guard;
 
   const contestant = await findContestantById(db, contestantId);

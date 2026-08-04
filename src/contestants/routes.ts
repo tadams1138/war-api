@@ -1,12 +1,13 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
 import { requireAuth } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
+import { replyForOutcome } from '../shared/httpOutcomes.js';
 import type { ObjectStorage } from './storage.js';
 import { addContestant, patchContestant, removeContestant } from './contestantsService.js';
 import { addContestantImage, reorderContestantMedia, removeContestantMedia } from './mediaService.js';
-import { findWarById } from '../wars/warsRepository.js';
+import { listMediaByContestant } from './contestantMediaRepository.js';
 import { presentContestant } from './contestantPresenter.js';
 
 export interface ContestantsRouteDeps {
@@ -14,21 +15,6 @@ export interface ContestantsRouteDeps {
   auth: AuthDependencies;
   storage: ObjectStorage;
   publicBaseUrl: string;
-}
-
-function mapError(kind: string, reply: FastifyReply, errors?: string[]) {
-  switch (kind) {
-    case 'notFound':
-      return reply.code(404).send({ error: 'not found' });
-    case 'forbidden':
-      return reply.code(403).send({ error: 'forbidden' });
-    case 'notDraft':
-      return reply.code(403).send({ error: 'War is no longer editable' });
-    case 'validationError':
-      return reply.code(422).send({ error: 'validation error', details: errors });
-    default:
-      return reply.code(500).send({ error: 'internal error' });
-  }
 }
 
 function extensionFor(mimeType: string): string {
@@ -62,10 +48,10 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
         new Date(),
       );
       if (outcome.kind !== 'ok') {
-        return mapError(outcome.kind, reply, 'errors' in outcome ? outcome.errors : undefined);
+        return replyForOutcome(reply, outcome);
       }
-      const war = await findWarById(db, request.params.id);
-      const view = await presentContestant(db, outcome.value, war!, deps.publicBaseUrl);
+      const media = await listMediaByContestant(db, outcome.value.contestant.id);
+      const view = presentContestant(outcome.value.contestant, outcome.value.war, media, deps.publicBaseUrl);
       return reply.code(201).send(view);
     },
   );
@@ -88,10 +74,10 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
         new Date(),
       );
       if (outcome.kind !== 'ok') {
-        return mapError(outcome.kind, reply, 'errors' in outcome ? outcome.errors : undefined);
+        return replyForOutcome(reply, outcome);
       }
-      const war = await findWarById(db, request.params.id);
-      const view = await presentContestant(db, outcome.value, war!, deps.publicBaseUrl);
+      const media = await listMediaByContestant(db, outcome.value.contestant.id);
+      const view = presentContestant(outcome.value.contestant, outcome.value.war, media, deps.publicBaseUrl);
       return reply.send(view);
     },
   );
@@ -102,7 +88,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
     async (request, reply) => {
       const outcome = await removeContestant(db, request.params.id, request.params.cId, request.voterId!, new Date());
       if (outcome.kind !== 'ok') {
-        return mapError(outcome.kind, reply);
+        return replyForOutcome(reply, outcome);
       }
       return reply.code(204).send();
     },
@@ -131,7 +117,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
         new Date(),
       );
       if (outcome.kind !== 'ok') {
-        return mapError(outcome.kind, reply, 'errors' in outcome ? outcome.errors : undefined);
+        return replyForOutcome(reply, outcome);
       }
       return reply.code(201).send({
         id: outcome.value.id,
@@ -155,7 +141,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
         new Date(),
       );
       if (outcome.kind !== 'ok') {
-        return mapError(outcome.kind, reply);
+        return replyForOutcome(reply, outcome);
       }
       return reply.code(204).send();
     },
@@ -174,7 +160,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
         new Date(),
       );
       if (outcome.kind !== 'ok') {
-        return mapError(outcome.kind, reply);
+        return replyForOutcome(reply, outcome);
       }
       return reply.code(204).send();
     },

@@ -117,7 +117,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
   Scenario('Originals are not publicly reachable', ({ Given, When, Then }) => {
     let originalKey: string;
-    let response: request.Response;
+    let warResponse: request.Response;
 
     Given('a stored original image', async () => {
       const buffer = await smallJpeg(1000, 800);
@@ -126,12 +126,26 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(harness.storage.publicObjects.has(originalKey)).toBe(false);
     });
 
+    // The API registers no /media/* route at all, so asserting a 404 from
+    // one would pass whether or not originals were actually protected
+    // (design review finding 3). The real guard is that nothing under the
+    // private "originals/" prefix ever appears in the public object store,
+    // and that no endpoint's response ever advertises such a URL.
     When('it is requested through the public media path', async () => {
-      response = await request(harness.app.server).get(`/api/v1/media/${originalKey}`);
+      warResponse = await request(harness.app.server).get(`/api/v1/wars/${warId}`);
     });
 
     Then('it is not served', () => {
-      expect(response.status).toBe(404);
+      const publicKeys = [...harness.storage.publicObjects.keys()];
+      expect(publicKeys.some((key) => key.startsWith('originals/'))).toBe(false);
+      expect(harness.storage.publicObjects.has(originalKey)).toBe(false);
+
+      const [contestant] = warResponse.body.contestants;
+      for (const media of contestant.media) {
+        for (const variant of media.variants) {
+          expect(variant.url).not.toContain('originals/');
+        }
+      }
     });
   });
 

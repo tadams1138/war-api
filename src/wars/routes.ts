@@ -3,6 +3,7 @@ import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
 import { requireAuth } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
+import { replyForOutcome } from '../shared/httpOutcomes.js';
 import { presentWarDetail, presentWarSummary } from './warPresenter.js';
 import { activateWar, closeWar, createWarForVoter, getWar, joinWar, patchWar } from './warsService.js';
 import { closeExpiredWars, listWars } from './warsRepository.js';
@@ -12,23 +13,6 @@ export interface WarsRouteDeps {
   auth: AuthDependencies;
   publicBaseUrl: string;
   internalTaskToken: string;
-}
-
-function mapMutationError(kind: string, reply: { code: (n: number) => { send: (body?: unknown) => unknown } }, errors?: string[]) {
-  switch (kind) {
-    case 'notFound':
-      return reply.code(404).send({ error: 'not found' });
-    case 'forbidden':
-      return reply.code(403).send({ error: 'forbidden' });
-    case 'notDraft':
-      return reply.code(403).send({ error: 'War is no longer editable' });
-    case 'notActive':
-      return reply.code(403).send({ error: 'War is not active' });
-    case 'validationError':
-      return reply.code(422).send({ error: 'validation error', details: errors });
-    default:
-      return reply.code(500).send({ error: 'internal error' });
-  }
 }
 
 export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): void {
@@ -93,7 +77,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
     );
 
     if (outcome.kind !== 'ok') {
-      return mapMutationError(outcome.kind, reply, 'errors' in outcome ? outcome.errors : undefined);
+      return replyForOutcome(reply, outcome);
     }
     return reply.send(presentWarSummary(outcome.value, new Date()));
   });
@@ -101,7 +85,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
   app.post<{ Params: { id: string } }>('/wars/:id/activate', { preHandler: requireAuth(auth) }, async (request, reply) => {
     const outcome = await activateWar(db, request.params.id, request.voterId!, new Date());
     if (outcome.kind !== 'ok') {
-      return mapMutationError(outcome.kind, reply, 'errors' in outcome ? outcome.errors : undefined);
+      return replyForOutcome(reply, outcome);
     }
     return reply.send(presentWarSummary(outcome.value, new Date()));
   });
@@ -109,7 +93,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
   app.post<{ Params: { id: string } }>('/wars/:id/close', { preHandler: requireAuth(auth) }, async (request, reply) => {
     const outcome = await closeWar(db, request.params.id, request.voterId!, new Date());
     if (outcome.kind !== 'ok') {
-      return mapMutationError(outcome.kind, reply);
+      return replyForOutcome(reply, outcome);
     }
     return reply.send(presentWarSummary(outcome.value, new Date()));
   });
@@ -117,7 +101,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
   app.post<{ Params: { id: string } }>('/wars/:id/join', { preHandler: requireAuth(auth) }, async (request, reply) => {
     const outcome = await joinWar(db, request.params.id, request.voterId!, new Date());
     if (outcome.kind !== 'ok') {
-      return mapMutationError(outcome.kind, reply);
+      return replyForOutcome(reply, outcome);
     }
     return reply.code(204).send();
   });

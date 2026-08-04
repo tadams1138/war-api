@@ -37,11 +37,21 @@ export async function findVote(db: Kysely<Database>, matchupId: string, voterId:
   return row ? toVote(row) : undefined;
 }
 
+export interface CastVoteResult {
+  /** False when a concurrent insert for this (matchup, voter) won the race. */
+  inserted: boolean;
+  vote: Vote;
+}
+
 /**
  * Casts a vote and increments both denormalised counters in one transaction
- * (spec §6, §8.4). Callers must have already established this is a first
- * vote on this matchup for this voter — retries and conflicts are handled
- * by the caller (spec §10.1) before this ever inserts.
+ * (spec §6, §8.4). The insert is `ON CONFLICT DO NOTHING` against the
+ * `UNIQUE (matchup_id, voter_id)` constraint, which is the real arbiter when
+ * two requests for the same voter race (design review finding 2) — the
+ * caller's pre-check (spec §10.1) is only a fast path, not the source of
+ * truth. When the insert is skipped, the counters are **not** touched, so
+ * the losing request never double-increments them; it returns the row the
+ * winner (or an earlier vote) already wrote.
  */
 export async function castVote(
   db: Kysely<Database>,
@@ -49,9 +59,9 @@ export async function castVote(
   voterId: string,
   winnerId: string,
   presentedLeftId: string,
-): Promise<Vote> {
+): Promise<CastVoteResult> {
   return db.transaction().execute(async (trx) => {
-    const row = await trx
+    const inserted = await trx
       .insertInto('votes')
       .values({
         id: newId(),
@@ -60,8 +70,19 @@ export async function castVote(
         winner_id: winnerId,
         presented_left_id: presentedLeftId,
       })
+      .onConflict((oc) => oc.columns(['matchup_id', 'voter_id']).doNothing())
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
+
+    if (!inserted) {
+      const existing = await trx
+        .selectFrom('votes')
+        .selectAll()
+        .where('matchup_id', '=', matchup.id)
+        .where('voter_id', '=', voterId)
+        .executeTakeFirstOrThrow();
+      return { inserted: false, vote: toVote(existing) };
+    }
 
     await trx
       .updateTable('contestants')
@@ -75,6 +96,6 @@ export async function castVote(
       .where('id', 'in', [matchup.contestantAId, matchup.contestantBId])
       .execute();
 
-    return toVote(row);
+    return { inserted: true, vote: toVote(inserted) };
   });
 }

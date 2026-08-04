@@ -4,6 +4,12 @@ import { createHash } from 'node:crypto';
  * The stable, per-voter shuffle key named in the spec's pair-selection query
  * (§8.4): `md5(matchup_id || voter_id)`. Deterministic for a given
  * (matchup, voter) pair; never uses `random()`.
+ *
+ * No production caller by design: the real ordering is the SQL
+ * `md5(m.id::text || voter_id::text)` expression in
+ * `findUnvotedMatchupsForVoter` (`src/matchups/matchupsRepository.ts`). This
+ * function exists as a TypeScript oracle so tests can predict that order
+ * without querying the database — change the two together.
  */
 export function stableHash(matchupId: string, voterId: string): string {
   return createHash('md5').update(`${matchupId}${voterId}`).digest('hex');

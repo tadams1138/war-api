@@ -64,18 +64,30 @@ export async function refresh(deps: AuthDependencies, presentedTokenValue: strin
   }
 
   const newTokenValue = generateRefreshTokenValue();
-  await rotateRefreshToken(deps.db, decision.token, hashRefreshToken(newTokenValue));
-  const jwt = await signAccessToken(decision.token.voterId, deps.jwt);
+  const rotated = await rotateRefreshToken(deps.db, decision.token, hashRefreshToken(newTokenValue));
+  if (rotated.kind === 'lost-race') {
+    // Another request already rotated this exact token concurrently — the
+    // same signal as presenting an already-used token (spec §5.2).
+    await revokeFamily(deps.db, decision.token.familyId);
+    return { kind: 'reused' };
+  }
+
+  const jwt = await signAccessToken(rotated.token.voterId, deps.jwt);
   return { kind: 'refreshed', jwt, refreshTokenValue: newTokenValue };
 }
 
-/** Logs out by revoking the whole refresh-token family (spec §5.2). */
-export async function logout(deps: AuthDependencies, presentedTokenValue: string | undefined): Promise<void> {
+/**
+ * Logs out by revoking the whole refresh-token family (spec §5.2) — but only
+ * when the presented refresh-token cookie actually belongs to the
+ * authenticated voter making the request. A cookie naming a different
+ * voter's family is silently ignored rather than acted on.
+ */
+export async function logout(deps: AuthDependencies, voterId: string, presentedTokenValue: string | undefined): Promise<void> {
   if (!presentedTokenValue) {
     return;
   }
   const stored = await findRefreshTokenByHash(deps.db, hashRefreshToken(presentedTokenValue));
-  if (stored) {
+  if (stored && stored.voterId === voterId) {
     await revokeFamily(deps.db, stored.familyId);
   }
 }

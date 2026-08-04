@@ -16,15 +16,19 @@ export interface MediaItemView {
 
 /**
  * Builds the response shape for a contestant's media array (spec §8, "Media
- * Representation"). Which variant widths exist is derived from the stored
- * source width — the same "never upscale" rule applied at upload time
- * (spec §11.1) — rather than persisted separately.
+ * Representation"). Which variant widths exist prefers the widths actually
+ * written at upload time (`variantWidths`, spec §11.1) so that changing
+ * today's `VARIANT_WIDTHS` later cannot silently break URLs already
+ * advertised for existing content (design review finding 15). Rows written
+ * before that column existed fall back to filtering the stored source width
+ * against today's config, exactly as before — no backfill required.
  */
 export function presentMedia(media: ContestantMedia[], publicBaseUrl: string): MediaItemView[] {
   return media.map((item) => {
     const sourceWidth = item.width ?? 0;
     const sourceHeight = item.height ?? 0;
-    const variants: MediaVariantView[] = VARIANT_WIDTHS.filter((width) => width <= sourceWidth).map((width) => ({
+    const widths = item.variantWidths ?? VARIANT_WIDTHS.filter((width) => width <= sourceWidth);
+    const variants: MediaVariantView[] = widths.map((width) => ({
       width,
       url: `${publicBaseUrl}/${item.storageKey}-${width}.webp`,
     }));

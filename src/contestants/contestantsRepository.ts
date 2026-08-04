@@ -1,5 +1,5 @@
-import type { Kysely } from 'kysely';
-import type { Database } from '../db/types.js';
+import type { Kysely, Selectable } from 'kysely';
+import type { ContestantsTable, Database } from '../db/types.js';
 import { toJsonb } from '../db/jsonb.js';
 import { newId } from '../db/uuid.js';
 
@@ -13,17 +13,7 @@ export interface Contestant {
   appearanceCount: number;
 }
 
-interface ContestantRow {
-  id: string;
-  war_id: string;
-  name: string;
-  bio: string | null;
-  attributes: unknown;
-  win_count: number;
-  appearance_count: number;
-}
-
-function toContestant(row: ContestantRow): Contestant {
+function toContestant(row: Selectable<ContestantsTable>): Contestant {
   return {
     id: row.id,
     warId: row.war_id,
@@ -54,12 +44,30 @@ export async function createContestant(db: Kysely<Database>, input: CreateContes
     })
     .returningAll()
     .executeTakeFirstOrThrow();
-  return toContestant(row as unknown as ContestantRow);
+  return toContestant(row);
 }
 
 export async function findContestantById(db: Kysely<Database>, id: string): Promise<Contestant | undefined> {
   const row = await db.selectFrom('contestants').selectAll().where('id', '=', id).executeTakeFirst();
-  return row ? toContestant(row as unknown as ContestantRow) : undefined;
+  return row ? toContestant(row) : undefined;
+}
+
+/**
+ * Batches a lookup of many contestants by id into one query (design review
+ * finding 9) — the alternative of one `findContestantById` call per id is
+ * what `/matchups/next` used to pay for its current pair and prefetch pair.
+ */
+export async function findContestantsByIds(db: Kysely<Database>, ids: string[]): Promise<Map<string, Contestant>> {
+  const byId = new Map<string, Contestant>();
+  if (ids.length === 0) {
+    return byId;
+  }
+  const rows = await db.selectFrom('contestants').selectAll().where('id', 'in', ids).execute();
+  for (const row of rows) {
+    const contestant = toContestant(row);
+    byId.set(contestant.id, contestant);
+  }
+  return byId;
 }
 
 export async function listContestantsByWar(db: Kysely<Database>, warId: string): Promise<Contestant[]> {
@@ -69,7 +77,7 @@ export async function listContestantsByWar(db: Kysely<Database>, warId: string):
     .where('war_id', '=', warId)
     .orderBy('created_at', 'asc')
     .execute();
-  return rows.map((row) => toContestant(row as unknown as ContestantRow));
+  return rows.map((row) => toContestant(row));
 }
 
 export interface ContestantPatch {
@@ -90,18 +98,9 @@ export async function updateContestant(db: Kysely<Database>, id: string, patch: 
     .where('id', '=', id)
     .returningAll()
     .executeTakeFirstOrThrow();
-  return toContestant(row as unknown as ContestantRow);
+  return toContestant(row);
 }
 
 export async function deleteContestant(db: Kysely<Database>, id: string): Promise<void> {
   await db.deleteFrom('contestants').where('id', '=', id).execute();
-}
-
-export async function countContestantsByWar(db: Kysely<Database>, warId: string): Promise<number> {
-  const row = await db
-    .selectFrom('contestants')
-    .select((eb) => eb.fn.countAll<string>().as('count'))
-    .where('war_id', '=', warId)
-    .executeTakeFirstOrThrow();
-  return Number(row.count);
 }

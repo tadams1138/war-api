@@ -41,7 +41,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDependencies,
         return reply.code(400).send({ error: 'missing code' });
       }
       const expectedState = request.cookies[STATE_COOKIE];
-      if (expectedState && state && expectedState !== state) {
+      if (!expectedState || !state || expectedState !== state) {
+        void reply.clearCookie(STATE_COOKIE, { path: AUTH_COOKIE_PATH });
         return reply.code(400).send({ error: 'state mismatch' });
       }
 
@@ -78,7 +79,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDependencies,
 
   app.delete('/auth/session', { preHandler: requireAuth(deps) }, async (request, reply) => {
     const presented = request.cookies[REFRESH_COOKIE];
-    await logout(deps, presented);
+    await logout(deps, request.voterId!, presented);
     void reply.clearCookie(REFRESH_COOKIE, { path: AUTH_COOKIE_PATH });
     return reply.code(204).send();
   });

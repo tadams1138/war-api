@@ -1,5 +1,5 @@
-import type { Kysely } from 'kysely';
-import type { Database } from '../db/types.js';
+import type { Kysely, Selectable } from 'kysely';
+import type { Database, WarsTable } from '../db/types.js';
 import { toJsonb } from '../db/jsonb.js';
 import { newId } from '../db/uuid.js';
 import type { ContestantSchemaField } from '../contestants/schemaValidation.js';
@@ -17,20 +17,7 @@ export interface War {
   createdAt: Date;
 }
 
-interface WarRow {
-  id: string;
-  creator_id: string | null;
-  title: string;
-  category: string | null;
-  status: string;
-  visibility: string;
-  media_mode: string;
-  contestant_schema: unknown;
-  ends_at: Date | string | null;
-  created_at: Date | string;
-}
-
-function toWar(row: WarRow): War {
+function toWar(row: Selectable<WarsTable>): War {
   return {
     id: row.id,
     creatorId: row.creator_id,
@@ -71,12 +58,12 @@ export async function createWar(db: Kysely<Database>, input: CreateWarInput): Pr
     })
     .returningAll()
     .executeTakeFirstOrThrow();
-  return toWar(row as unknown as WarRow);
+  return toWar(row);
 }
 
 export async function findWarById(db: Kysely<Database>, id: string): Promise<War | undefined> {
   const row = await db.selectFrom('wars').selectAll().where('id', '=', id).executeTakeFirst();
-  return row ? toWar(row as unknown as WarRow) : undefined;
+  return row ? toWar(row) : undefined;
 }
 
 export interface ListWarsFilter {
@@ -100,7 +87,7 @@ export async function listWars(db: Kysely<Database>, filter: ListWarsFilter): Pr
   }
 
   const rows = await query.limit(filter.limit).execute();
-  return rows.map((row) => toWar(row as unknown as WarRow));
+  return rows.map((row) => toWar(row));
 }
 
 export interface WarPatch {
@@ -127,7 +114,7 @@ export async function updateWar(db: Kysely<Database>, id: string, patch: WarPatc
     .where('id', '=', id)
     .returningAll()
     .executeTakeFirstOrThrow();
-  return toWar(row as unknown as WarRow);
+  return toWar(row);
 }
 
 export async function setWarStatus(db: Kysely<Database>, id: string, status: string): Promise<War> {
@@ -137,7 +124,7 @@ export async function setWarStatus(db: Kysely<Database>, id: string, status: str
     .where('id', '=', id)
     .returningAll()
     .executeTakeFirstOrThrow();
-  return toWar(row as unknown as WarRow);
+  return toWar(row);
 }
 
 /** Materialises stored status for expired Wars (spec §6, §8.7). Idempotent. */

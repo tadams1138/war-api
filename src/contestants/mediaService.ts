@@ -1,9 +1,9 @@
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
-import { effectiveStatus } from '../wars/effectiveStatus.js';
-import { findWarById } from '../wars/warsRepository.js';
+import { loadDraftWarOwnedBy } from '../wars/warAccess.js';
+import type { War } from '../wars/warsRepository.js';
 import type { MutationOutcome } from '../shared/outcomes.js';
-import { findContestantById } from './contestantsRepository.js';
+import { findContestantById, type Contestant } from './contestantsRepository.js';
 import { deleteMedia, findMediaById, setDisplayOrder, type ContestantMedia } from './contestantMediaRepository.js';
 import { uploadContestantImage, type UploadOutcome } from './imageUploadService.js';
 import type { ObjectStorage } from './storage.js';
@@ -14,16 +14,19 @@ async function guardDraftOwnedContestant(
   contestantId: string,
   voterId: string,
   now: Date,
-): Promise<{ kind: 'ok' } | { kind: 'notFound' } | { kind: 'forbidden' } | { kind: 'notDraft' }> {
-  const war = await findWarById(db, warId);
-  if (!war) return { kind: 'notFound' };
-  if (war.creatorId !== voterId) return { kind: 'forbidden' };
-  if (effectiveStatus(war, now) !== 'draft') return { kind: 'notDraft' };
+): Promise<
+  | { kind: 'ok'; war: War; contestant: Contestant }
+  | { kind: 'notFound' }
+  | { kind: 'forbidden' }
+  | { kind: 'notDraft' }
+> {
+  const warGuard = await loadDraftWarOwnedBy(db, warId, voterId, now);
+  if (warGuard.kind !== 'ok') return warGuard;
 
   const contestant = await findContestantById(db, contestantId);
   if (!contestant || contestant.warId !== warId) return { kind: 'notFound' };
 
-  return { kind: 'ok' };
+  return { kind: 'ok', war: warGuard.war, contestant };
 }
 
 export interface AddImageInput {
@@ -35,12 +38,7 @@ export interface AddImageInput {
   originalExt: string;
 }
 
-export type AddImageOutcome =
-  | { kind: 'ok'; value: ContestantMedia }
-  | { kind: 'notFound' }
-  | { kind: 'forbidden' }
-  | { kind: 'notDraft' }
-  | { kind: 'validationError'; errors: string[] };
+export type AddImageOutcome = MutationOutcome<ContestantMedia>;
 
 export async function addContestantImage(
   db: Kysely<Database>,
