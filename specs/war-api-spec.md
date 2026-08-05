@@ -544,19 +544,15 @@ In responses below this array is abbreviated as `media: [ … ]`.
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/auth/{provider}/login` | — | Redirect to OAuth provider (`{provider}` must be `google`; else `404`) |
-| `GET` | `/auth/{provider}/callback` | — | OAuth callback; returns JWT + refresh token |
+| `GET` | `/auth/{provider}/callback` | — | OAuth callback; sets refresh cookie, redirects to the SPA |
 | `POST` | `/auth/refresh` | — | Exchange refresh token for new JWT |
 | `DELETE` | `/auth/session` | 🔒 | Logout / invalidate refresh token family |
 | `GET` | `/auth/me` | 🔒 | Current voter profile |
 
-**`GET /auth/google/callback` response `200`:**
-```json
-{
-  "token": "<jwt>",
-  "refresh_token": "<token>",
-  "voter": { "id": "uuid", "display_name": "Jane", "avatar_url": "https://..." }
-}
-```
+**`GET /auth/google/callback`** — per §5.1, this never returns a JSON body. On success it
+sets the `refresh_token` cookie (`HttpOnly; Secure; SameSite=Lax; Path=/api/v1/auth`) and
+responds `302` with `Location: <ui_origin>/auth/callback` — no token in the path, query,
+or fragment. The SPA then calls `POST /auth/refresh` (§5.1 step 3) to obtain its first JWT.
 
 ---
 
