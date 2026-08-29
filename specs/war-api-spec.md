@@ -804,6 +804,22 @@ WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at <= now()
 
 ---
 
+### 8.8 Health Check
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/health` | — | Liveness check — process is up and answering HTTP |
+
+**Response `200`:** `{ "status": "ok" }`
+
+No auth, no dependency on the database or object storage — this checks only that the
+process itself is running and able to answer requests. Polled by App Platform's
+`health_check` (`war-infra-spec.md` §15.2) to decide whether a deployment is serving
+traffic yet; not meant to reflect downstream health (a database outage does not fail
+this check — see `war-api/src/app.ts`).
+
+---
+
 ## 9. Scoring Algorithm (Rankings)
 
 Contestants are ranked by **raw win count**, descending.
