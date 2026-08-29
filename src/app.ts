@@ -30,6 +30,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(cors, { origin: deps.config.uiOrigins, credentials: true });
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 
+  // App Platform's health_check (platform/{env}.yaml in war-infra) polls
+  // this exact path. No auth, no dependencies — a check that the process is
+  // up and answering HTTP, nothing more.
+  app.get(`${API_PREFIX}/health`, async () => ({ status: 'ok' }));
+
   const authDeps: AuthDependencies = {
     db: deps.db,
     google: deps.google,
