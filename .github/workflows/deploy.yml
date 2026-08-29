@@ -3,6 +3,13 @@ name: Deploy
 on:
   push:
     branches: [master]
+  # Manual retrigger. Also the only way to get a run that actually reflects
+  # war-infra's current api.yml -- `uses: .../api.yml@master` resolves once,
+  # at the run's first trigger, and a *rerun* of an existing run reuses that
+  # original resolution rather than re-resolving @master, so `gh run rerun`
+  # on an old run silently keeps executing whatever api.yml looked like back
+  # then. A fresh trigger (push or this) always resolves master fresh.
+  workflow_dispatch:
 
 jobs:
   pipeline:
