@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
-import { requireAuth } from '../auth/plugin.js';
+import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
 import { replyForOutcome } from '../shared/httpOutcomes.js';
 import type { ObjectStorage } from './storage.js';
@@ -33,7 +33,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
 
   app.post<{ Params: { id: string } }>(
     '/wars/:id/contestants',
-    { preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const body = request.body as Record<string, unknown>;
       const outcome = await addContestant(
@@ -58,7 +58,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
 
   app.patch<{ Params: { id: string; cId: string } }>(
     '/wars/:id/contestants/:cId',
-    { preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const body = request.body as Record<string, unknown>;
       const outcome = await patchContestant(
@@ -84,7 +84,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
 
   app.delete<{ Params: { id: string; cId: string } }>(
     '/wars/:id/contestants/:cId',
-    { preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const outcome = await removeContestant(db, request.params.id, request.params.cId, request.voterId!, new Date());
       if (outcome.kind !== 'ok') {
@@ -96,7 +96,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
 
   app.post<{ Params: { id: string; cId: string } }>(
     '/wars/:id/contestants/:cId/images',
-    { preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const file = await request.file();
       if (!file) {
@@ -128,7 +128,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
 
   app.patch<{ Params: { id: string; cId: string; mId: string } }>(
     '/wars/:id/contestants/:cId/media/:mId',
-    { preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const body = request.body as { display_order?: number };
       const outcome = await reorderContestantMedia(
@@ -149,7 +149,7 @@ export function registerContestantsRoutes(app: FastifyInstance, deps: Contestant
 
   app.delete<{ Params: { id: string; cId: string; mId: string } }>(
     '/wars/:id/contestants/:cId/media/:mId',
-    { preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const outcome = await removeContestantMedia(
         db,

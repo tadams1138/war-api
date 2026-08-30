@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
-import { requireAuth } from '../auth/plugin.js';
+import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
 import { castVoteForVoter } from '../votes/votesService.js';
 import { countMatchupsForWar, countVotesByVoterInWar } from './matchupsRepository.js';
@@ -18,7 +18,7 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
 
   app.get<{ Params: { id: string } }>(
     '/wars/:id/matchups/next',
-    { preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const view = await nextMatchupForVoter(db, request.params.id, request.voterId!, deps.publicBaseUrl);
       if (!view) {
@@ -30,7 +30,7 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
 
   app.get<{ Params: { id: string } }>(
     '/wars/:id/my-progress',
-    { preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const [voted, total] = await Promise.all([
         countVotesByVoterInWar(db, request.params.id, request.voterId!),
@@ -42,7 +42,7 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
 
   app.post<{ Params: { id: string; mId: string }; Body: { winner_id: string } }>(
     '/wars/:id/matchups/:mId/vote',
-    { preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const outcome = await castVoteForVoter(db, {
         warId: request.params.id,

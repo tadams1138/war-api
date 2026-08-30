@@ -17,6 +17,23 @@ export function testConfig(): AppConfig {
   } as NodeJS.ProcessEnv);
 }
 
+export interface CommonAppDeps {
+  config: AppConfig;
+  google: FakeGoogleAuthProvider;
+  storage: InMemoryObjectStorage;
+}
+
+/**
+ * The dependencies every test harness wires the same way, regardless of
+ * whether it backs `db` with a real database or a stub. Shared here so
+ * `buildTestHarness` and `buildAppWithoutDb` (test/setup/testAppNoDb.ts)
+ * cannot drift in how they construct `google`/`storage`/`config`.
+ */
+export function buildCommonDeps(): CommonAppDeps {
+  const config = testConfig();
+  return { config, google: new FakeGoogleAuthProvider(), storage: new InMemoryObjectStorage(config.s3.publicBaseUrl) };
+}
+
 export interface TestHarness {
   app: Awaited<ReturnType<typeof buildApp>>;
   db: Kysely<Database>;
@@ -28,9 +45,7 @@ export interface TestHarness {
 
 export async function buildTestHarness(): Promise<TestHarness> {
   const db = await getTestDb();
-  const config = testConfig();
-  const google = new FakeGoogleAuthProvider();
-  const storage = new InMemoryObjectStorage(config.s3.publicBaseUrl);
+  const { config, google, storage } = buildCommonDeps();
 
   const app = await buildApp({ db, google, storage, config });
 

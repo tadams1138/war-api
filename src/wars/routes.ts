@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
-import { requireAuth } from '../auth/plugin.js';
+import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
 import { replyForOutcome } from '../shared/httpOutcomes.js';
 import { presentWarDetail, presentWarSummary } from './warPresenter.js';
@@ -33,7 +33,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
     },
   );
 
-  app.post('/wars', { preHandler: requireAuth(auth) }, async (request, reply) => {
+  app.post('/wars', bearerAuthRoute(auth), async (request, reply) => {
     const body = request.body as Record<string, unknown>;
     const outcome = await createWarForVoter(db, {
       creatorId: request.voterId!,
@@ -60,53 +60,69 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
     return reply.send(detail);
   });
 
-  app.patch<{ Params: { id: string } }>('/wars/:id', { preHandler: requireAuth(auth) }, async (request, reply) => {
-    const body = request.body as Record<string, unknown>;
-    const outcome = await patchWar(
-      db,
-      request.params.id,
-      request.voterId!,
-      {
-        title: body.title as string | undefined,
-        category: body.category as string | null | undefined,
-        visibility: body.visibility as string | undefined,
-        contestantSchema: body.contestant_schema,
-        endsAt: body.ends_at as string | null | undefined,
-      },
-      new Date(),
-    );
+  app.patch<{ Params: { id: string } }>(
+    '/wars/:id',
+    bearerAuthRoute(auth),
+    async (request, reply) => {
+      const body = request.body as Record<string, unknown>;
+      const outcome = await patchWar(
+        db,
+        request.params.id,
+        request.voterId!,
+        {
+          title: body.title as string | undefined,
+          category: body.category as string | null | undefined,
+          visibility: body.visibility as string | undefined,
+          contestantSchema: body.contestant_schema,
+          endsAt: body.ends_at as string | null | undefined,
+        },
+        new Date(),
+      );
 
-    if (outcome.kind !== 'ok') {
-      return replyForOutcome(reply, outcome);
-    }
-    return reply.send(presentWarSummary(outcome.value, new Date()));
-  });
+      if (outcome.kind !== 'ok') {
+        return replyForOutcome(reply, outcome);
+      }
+      return reply.send(presentWarSummary(outcome.value, new Date()));
+    },
+  );
 
-  app.post<{ Params: { id: string } }>('/wars/:id/activate', { preHandler: requireAuth(auth) }, async (request, reply) => {
-    const outcome = await activateWar(db, request.params.id, request.voterId!, new Date());
-    if (outcome.kind !== 'ok') {
-      return replyForOutcome(reply, outcome);
-    }
-    return reply.send(presentWarSummary(outcome.value, new Date()));
-  });
+  app.post<{ Params: { id: string } }>(
+    '/wars/:id/activate',
+    bearerAuthRoute(auth),
+    async (request, reply) => {
+      const outcome = await activateWar(db, request.params.id, request.voterId!, new Date());
+      if (outcome.kind !== 'ok') {
+        return replyForOutcome(reply, outcome);
+      }
+      return reply.send(presentWarSummary(outcome.value, new Date()));
+    },
+  );
 
-  app.post<{ Params: { id: string } }>('/wars/:id/close', { preHandler: requireAuth(auth) }, async (request, reply) => {
-    const outcome = await closeWar(db, request.params.id, request.voterId!, new Date());
-    if (outcome.kind !== 'ok') {
-      return replyForOutcome(reply, outcome);
-    }
-    return reply.send(presentWarSummary(outcome.value, new Date()));
-  });
+  app.post<{ Params: { id: string } }>(
+    '/wars/:id/close',
+    bearerAuthRoute(auth),
+    async (request, reply) => {
+      const outcome = await closeWar(db, request.params.id, request.voterId!, new Date());
+      if (outcome.kind !== 'ok') {
+        return replyForOutcome(reply, outcome);
+      }
+      return reply.send(presentWarSummary(outcome.value, new Date()));
+    },
+  );
 
-  app.post<{ Params: { id: string } }>('/wars/:id/join', { preHandler: requireAuth(auth) }, async (request, reply) => {
-    const outcome = await joinWar(db, request.params.id, request.voterId!, new Date());
-    if (outcome.kind !== 'ok') {
-      return replyForOutcome(reply, outcome);
-    }
-    return reply.code(204).send();
-  });
+  app.post<{ Params: { id: string } }>(
+    '/wars/:id/join',
+    bearerAuthRoute(auth),
+    async (request, reply) => {
+      const outcome = await joinWar(db, request.params.id, request.voterId!, new Date());
+      if (outcome.kind !== 'ok') {
+        return replyForOutcome(reply, outcome);
+      }
+      return reply.code(204).send();
+    },
+  );
 
-  app.post('/internal/close-expired-wars', async (request, reply) => {
+  app.post('/internal/close-expired-wars', { schema: { hide: true } }, async (request, reply) => {
     const token = request.headers['x-internal-token'];
     if (token !== deps.internalTaskToken) {
       return reply.code(401).send({ error: 'unauthorized' });

@@ -1,4 +1,4 @@
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest, FastifySchema } from 'fastify';
 import { authenticatedVoterId, type AuthDependencies } from './authService.js';
 
 declare module 'fastify' {
@@ -20,4 +20,15 @@ export function requireAuth(deps: AuthDependencies) {
       await reply.code(401).send({ error: 'unauthorized' });
     }
   };
+}
+
+/**
+ * Route options for an endpoint gated by the bearer JWT: the preHandler that
+ * enforces it and the OpenAPI marker that documents it, produced together so
+ * neither can be added without the other (spec §5, §11.2). Accepts the
+ * route's own schema (if any) so adding request/response validation later
+ * can never overwrite the security marker.
+ */
+export function bearerAuthRoute(deps: AuthDependencies, schema: FastifySchema = {}) {
+  return { schema: { ...schema, security: [{ bearerAuth: [] }] }, preHandler: requireAuth(deps) };
 }
