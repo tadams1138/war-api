@@ -1,9 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
-import { requireAuth } from '../auth/plugin.js';
+import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
-import { requiresBearerAuth } from '../openapi/security.js';
 import { replyForOutcome } from '../shared/httpOutcomes.js';
 import { presentWarDetail, presentWarSummary } from './warPresenter.js';
 import { activateWar, closeWar, createWarForVoter, getWar, joinWar, patchWar } from './warsService.js';
@@ -34,7 +33,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
     },
   );
 
-  app.post('/wars', { schema: requiresBearerAuth, preHandler: requireAuth(auth) }, async (request, reply) => {
+  app.post('/wars', bearerAuthRoute(auth), async (request, reply) => {
     const body = request.body as Record<string, unknown>;
     const outcome = await createWarForVoter(db, {
       creatorId: request.voterId!,
@@ -63,7 +62,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
 
   app.patch<{ Params: { id: string } }>(
     '/wars/:id',
-    { schema: requiresBearerAuth, preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const body = request.body as Record<string, unknown>;
       const outcome = await patchWar(
@@ -89,7 +88,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
 
   app.post<{ Params: { id: string } }>(
     '/wars/:id/activate',
-    { schema: requiresBearerAuth, preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const outcome = await activateWar(db, request.params.id, request.voterId!, new Date());
       if (outcome.kind !== 'ok') {
@@ -101,7 +100,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
 
   app.post<{ Params: { id: string } }>(
     '/wars/:id/close',
-    { schema: requiresBearerAuth, preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const outcome = await closeWar(db, request.params.id, request.voterId!, new Date());
       if (outcome.kind !== 'ok') {
@@ -113,7 +112,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
 
   app.post<{ Params: { id: string } }>(
     '/wars/:id/join',
-    { schema: requiresBearerAuth, preHandler: requireAuth(auth) },
+    bearerAuthRoute(auth),
     async (request, reply) => {
       const outcome = await joinWar(db, request.params.id, request.voterId!, new Date());
       if (outcome.kind !== 'ok') {

@@ -1,14 +1,28 @@
 import type { Kysely } from 'kysely';
 import { buildApp } from '../../src/app.js';
-import type { AppConfig } from '../../src/config.js';
 import type { Database } from '../../src/db/types.js';
-import { FakeGoogleAuthProvider } from './fakeGoogleProvider.js';
-import { InMemoryObjectStorage } from './fakeStorage.js';
-import { testConfig } from './testApp.js';
+import { buildCommonDeps } from './testApp.js';
 
 export interface NoDbHarness {
   app: Awaited<ReturnType<typeof buildApp>>;
-  config: AppConfig;
+}
+
+/**
+ * A `db` that throws a clear, immediate error the moment anything touches
+ * it, rather than failing later with an opaque "x is not a function" three
+ * layers away from the real cause. Every property access -- not just calls
+ * -- goes through this, so `db.selectFrom` itself throws before it ever
+ * gets the chance to be called.
+ */
+function unusableDb(): Kysely<Database> {
+  const handler: ProxyHandler<object> = {
+    get(_target, prop) {
+      throw new Error(
+        `buildAppWithoutDb() has no database; '${String(prop)}' was accessed. Use buildTestHarness() for data-dependent scenarios.`,
+      );
+    },
+  };
+  return new Proxy({}, handler) as unknown as Kysely<Database>;
 }
 
 /**
@@ -18,11 +32,7 @@ export interface NoDbHarness {
  * Schemas, never on data, so it needs no Postgres/Testcontainers dependency.
  */
 export async function buildAppWithoutDb(): Promise<NoDbHarness> {
-  const config = testConfig();
-  const google = new FakeGoogleAuthProvider();
-  const storage = new InMemoryObjectStorage(config.s3.publicBaseUrl);
-  const db = {} as unknown as Kysely<Database>;
-
-  const app = await buildApp({ db, google, storage, config });
-  return { app, config };
+  const { config, google, storage } = buildCommonDeps();
+  const app = await buildApp({ db: unusableDb(), google, storage, config });
+  return { app };
 }

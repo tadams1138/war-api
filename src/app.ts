@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Kysely } from 'kysely';
+import packageJson from '../package.json' with { type: 'json' };
 import type { Database } from './db/types.js';
 import type { AuthDependencies } from './auth/authService.js';
 import type { GoogleAuthProvider } from './auth/googleProvider.js';
@@ -24,6 +25,7 @@ export interface AppDeps {
 }
 
 const API_PREFIX = '/api/v1';
+const API_TITLE = 'War API';
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -33,7 +35,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
   // Registered before any route so its onRoute hook observes every one of
   // them, including those added inside nested, prefixed plugins below.
-  await registerOpenApiPlugin(app, API_PREFIX);
+  await registerOpenApiPlugin(app, API_PREFIX, { title: API_TITLE, version: packageJson.version });
 
   // App Platform's health_check (platform/{env}.yaml in war-infra) polls
   // this exact path. No auth, no dependencies — a check that the process is

@@ -66,4 +66,13 @@ describe('parseRouteTree', () => {
     expect(routes).toContainEqual({ method: 'GET', url: '/api/v1/wars/:id/rankings' });
     expect(routes.some((route) => route.url === '/api/v1/wars/:id/rankings/activate')).toBe(false);
   });
+
+  it('throws a clear error rather than silently returning an empty list when it matches no routes', () => {
+    // Arrange: text that does not resemble Fastify's printRoutes() tree at all
+    // -- standing in for a future Fastify version changing that format.
+    const unrecognizedFormat = 'not a route tree\njust some other text\n';
+
+    // Act / Assert
+    expect(() => parseRouteTree(unrecognizedFormat)).toThrow(/matched no routes/);
+  });
 });

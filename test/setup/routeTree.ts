@@ -76,6 +76,14 @@ export function parseRouteTree(tree: string): RegisteredRoute[] {
     recordRoutes(routes, path, parsed.methods);
   }
 
+  // A real app always registers at least one route (health check alone
+  // guarantees that). Zero here means this parser no longer recognizes
+  // Fastify's tree format -- surface that directly rather than letting it
+  // masquerade as "the document is missing every path".
+  if (routes.length === 0) {
+    throw new Error("parseRouteTree matched no routes; Fastify's printRoutes() tree format may have changed");
+  }
+
   return routes;
 }
 

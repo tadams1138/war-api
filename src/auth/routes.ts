@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { requiresBearerAuth } from '../openapi/security.js';
 import { beginLogin, completeCallback, currentVoter, logout, refresh, type AuthDependencies } from './authService.js';
-import { requireAuth } from './plugin.js';
+import { bearerAuthRoute } from './plugin.js';
 
 const REFRESH_COOKIE = 'refresh_token';
 const STATE_COOKIE = 'oauth_state';
@@ -78,14 +77,14 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDependencies,
     return reply.send({ token: result.jwt });
   });
 
-  app.delete('/auth/session', { schema: requiresBearerAuth, preHandler: requireAuth(deps) }, async (request, reply) => {
+  app.delete('/auth/session', bearerAuthRoute(deps), async (request, reply) => {
     const presented = request.cookies[REFRESH_COOKIE];
     await logout(deps, request.voterId!, presented);
     void reply.clearCookie(REFRESH_COOKIE, { path: AUTH_COOKIE_PATH });
     return reply.code(204).send();
   });
 
-  app.get('/auth/me', { schema: requiresBearerAuth, preHandler: requireAuth(deps) }, async (request, reply) => {
+  app.get('/auth/me', bearerAuthRoute(deps), async (request, reply) => {
     const voter = await currentVoter(deps, request.headers.authorization);
     return reply.send({
       voter: { id: voter.id, display_name: voter.displayName, avatar_url: voter.avatarUrl },
