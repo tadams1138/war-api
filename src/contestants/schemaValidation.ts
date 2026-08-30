@@ -145,6 +145,24 @@ export interface ResolvedAttribute {
 }
 
 /**
+ * The response body JSON Schema for {@link ResolvedAttribute} (spec
+ * §11.2.1). Registered under `$id: "ResolvedAttribute"`
+ * (`registerSharedSchemas`, `src/openapi/schemas.ts`). Kept beside the
+ * interface it mirrors -- see {@link mediaItemSchema} for why.
+ */
+export const resolvedAttributeSchema = {
+  $id: 'ResolvedAttribute',
+  type: 'object',
+  required: ['key', 'label', 'type', 'value'],
+  properties: {
+    key: { type: 'string' },
+    label: { type: 'string' },
+    type: { type: 'string', enum: VALID_TYPES },
+    value: { type: ['string', 'number'] },
+  },
+};
+
+/**
  * Resolves stored attributes against the schema so responses carry labels,
  * types, and values in schema order (spec §8.3). Keys the contestant never
  * supplied are omitted.

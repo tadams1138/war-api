@@ -4,8 +4,28 @@ import type { Database } from '../db/types.js';
 import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
 import { castVoteForVoter } from '../votes/votesService.js';
+import { errorResponseSchema } from '../shared/httpOutcomes.js';
 import { countMatchupsForWar, countVotesByVoterInWar } from './matchupsRepository.js';
-import { nextMatchupForVoter } from './matchupsService.js';
+import { nextMatchupForVoter, nextMatchupResponseSchema } from './matchupsService.js';
+
+/**
+ * Fastify's own request-validation error envelope (ajv, via
+ * `@fastify/ajv-compiler`) -- distinct from this route's own `{ error }`
+ * shape used for its other 4xx responses. Produced for a malformed body
+ * (missing or non-UUID `winner_id`) before the handler ever runs, so
+ * `castVoteForVoter`'s own `invalidWinner` (422) is never reached in that
+ * case. Verified against Fastify 5.11.0; transcribed into spec §11.2.1.
+ */
+const validationErrorResponseSchema = {
+  type: 'object',
+  required: ['statusCode', 'code', 'error', 'message'],
+  properties: {
+    statusCode: { type: 'integer' },
+    code: { type: 'string' },
+    error: { type: 'string' },
+    message: { type: 'string' },
+  },
+};
 
 export interface MatchupsRouteDeps {
   db: Kysely<Database>;
@@ -18,7 +38,7 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
 
   app.get<{ Params: { id: string } }>(
     '/wars/:id/matchups/next',
-    bearerAuthRoute(auth),
+    bearerAuthRoute(auth, { response: { 200: nextMatchupResponseSchema, 204: {} } }),
     async (request, reply) => {
       const view = await nextMatchupForVoter(db, request.params.id, request.voterId!, deps.publicBaseUrl);
       if (!view) {
@@ -42,7 +62,26 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
 
   app.post<{ Params: { id: string; mId: string }; Body: { winner_id: string } }>(
     '/wars/:id/matchups/:mId/vote',
-    bearerAuthRoute(auth),
+    bearerAuthRoute(auth, {
+      body: {
+        type: 'object',
+        required: ['winner_id'],
+        properties: { winner_id: { type: 'string', format: 'uuid' } },
+      },
+      response: {
+        201: { type: 'object', required: ['vote_id'], properties: { vote_id: { type: 'string', format: 'uuid' } } },
+        200: {
+          type: 'object',
+          required: ['status'],
+          properties: { status: { type: 'string', enum: ['already recorded'] } },
+        },
+        400: validationErrorResponseSchema,
+        409: errorResponseSchema,
+        422: errorResponseSchema,
+        403: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    }),
     async (request, reply) => {
       const outcome = await castVoteForVoter(db, {
         warId: request.params.id,

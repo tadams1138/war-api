@@ -3,8 +3,8 @@ import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
 import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
-import { replyForOutcome } from '../shared/httpOutcomes.js';
-import { presentWarDetail, presentWarSummary } from './warPresenter.js';
+import { errorResponseSchema, replyForOutcome } from '../shared/httpOutcomes.js';
+import { presentWarDetail, presentWarSummary, warDetailResponseSchema } from './warPresenter.js';
 import { activateWar, closeWar, createWarForVoter, getWar, joinWar, patchWar } from './warsService.js';
 import { closeExpiredWars, listWars } from './warsRepository.js';
 
@@ -20,6 +20,17 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
 
   app.get<{ Querystring: { status?: string; category?: string; cursor?: string; limit?: string } }>(
     '/wars',
+    {
+      schema: {
+        response: {
+          200: {
+            type: 'object',
+            required: ['wars'],
+            properties: { wars: { type: 'array', items: { $ref: 'WarSummary#' } } },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const limit = Math.min(Number(request.query.limit ?? 20) || 20, 100);
       const wars = await listWars(db, {
@@ -51,14 +62,18 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
     return reply.code(201).send(presentWarSummary(outcome.war, new Date()));
   });
 
-  app.get<{ Params: { id: string } }>('/wars/:id', async (request, reply) => {
-    const lookup = await getWar(db, request.params.id);
-    if (lookup.kind === 'notFound') {
-      return reply.code(404).send({ error: 'not found' });
-    }
-    const detail = await presentWarDetail(db, lookup.war, new Date(), deps.publicBaseUrl);
-    return reply.send(detail);
-  });
+  app.get<{ Params: { id: string } }>(
+    '/wars/:id',
+    { schema: { response: { 200: warDetailResponseSchema, 404: errorResponseSchema } } },
+    async (request, reply) => {
+      const lookup = await getWar(db, request.params.id);
+      if (lookup.kind === 'notFound') {
+        return reply.code(404).send({ error: 'not found' });
+      }
+      const detail = await presentWarDetail(db, lookup.war, new Date(), deps.publicBaseUrl);
+      return reply.send(detail);
+    },
+  );
 
   app.patch<{ Params: { id: string } }>(
     '/wars/:id',
@@ -112,7 +127,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
 
   app.post<{ Params: { id: string } }>(
     '/wars/:id/join',
-    bearerAuthRoute(auth),
+    bearerAuthRoute(auth, { response: { 204: {}, 403: errorResponseSchema, 404: errorResponseSchema } }),
     async (request, reply) => {
       const outcome = await joinWar(db, request.params.id, request.voterId!, new Date());
       if (outcome.kind !== 'ok') {

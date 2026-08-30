@@ -15,6 +15,31 @@ export interface ContestantDetailView {
 }
 
 /**
+ * The response body JSON Schema for {@link ContestantDetailView} (spec
+ * §11.2.1). Registered under `$id: "ContestantDetail"`
+ * (`registerSharedSchemas`, `src/openapi/schemas.ts`) and `$ref`s the
+ * `ResolvedAttribute`/`MediaItem` schemas by name rather than importing
+ * their JS objects, so this module needs no new dependency on
+ * `mediaPresenter.ts`/`schemaValidation.ts` beyond the ones it already has
+ * for the types themselves. Kept beside the interface it mirrors -- see
+ * `mediaItemSchema` (`mediaPresenter.ts`) for why.
+ */
+export const contestantDetailSchema = {
+  $id: 'ContestantDetail',
+  type: 'object',
+  required: ['id', 'name', 'bio', 'attributes', 'media', 'win_count', 'appearance_count'],
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    name: { type: 'string' },
+    bio: { type: ['string', 'null'] },
+    attributes: { type: 'array', items: { $ref: 'ResolvedAttribute#' } },
+    media: { type: 'array', items: { $ref: 'MediaItem#' } },
+    win_count: { type: 'integer' },
+    appearance_count: { type: 'integer' },
+  },
+};
+
+/**
  * Builds a contestant's detail view from media the caller already fetched,
  * rather than fetching it itself — the N+1 alternative (one query per
  * contestant) is what War detail used to pay on every request (design

@@ -13,6 +13,7 @@ import { registerContestantsRoutes } from './contestants/routes.js';
 import { registerMatchupsRoutes } from './matchups/routes.js';
 import { registerOpenApiPlugin } from './openapi/plugin.js';
 import { registerOpenApiRoutes } from './openapi/routes.js';
+import { registerSharedSchemas } from './openapi/schemas.js';
 import { registerRankingsRoutes } from './rankings/routes.js';
 import { registerWarsRoutes } from './wars/routes.js';
 import type { AppConfig } from './config.js';
@@ -36,6 +37,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   // Registered before any route so its onRoute hook observes every one of
   // them, including those added inside nested, prefixed plugins below.
   await registerOpenApiPlugin(app, API_PREFIX, { title: API_TITLE, version: packageJson.version });
+  registerSharedSchemas(app);
 
   // App Platform's health_check (platform/{env}.yaml in war-infra) polls
   // this exact path. No auth, no dependencies — a check that the process is
