@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { beginLogin, completeCallback, currentVoter, logout, refresh, type AuthDependencies } from './authService.js';
 import { bearerAuthRoute } from './plugin.js';
-import { errorResponseSchema } from '../openapi/schemas.js';
+import { errorResponseSchema } from '../shared/httpOutcomes.js';
 
 const REFRESH_COOKIE = 'refresh_token';
 const STATE_COOKIE = 'oauth_state';
@@ -25,7 +25,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDependencies,
   app.get<{ Params: { provider: string } }>(
     '/auth/:provider/login',
     // Success is a bare 302 redirect (no body); the only bodied outcome is
-    // an unsupported provider's 404 (spec §11.2.1 discrepancy 3: "confirmed
+    // an unsupported provider's 404 (spec §11.2.1 discrepancy 2: "confirmed
     // redirect-or-empty-404 only -- no body to schema on that route").
     { schema: { response: { 404: {} } } },
     async (request, reply) => {

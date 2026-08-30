@@ -15,6 +15,37 @@ export interface MediaItemView {
 }
 
 /**
+ * The response body JSON Schema for {@link MediaItemView} (spec §11.2.1).
+ * Registered under `$id: "MediaItem"` (`registerSharedSchemas`,
+ * `src/openapi/schemas.ts`) so other routes' schemas can `$ref` it instead
+ * of repeating it. Kept beside the interface it mirrors, on pain of the
+ * silent field-drop `fast-json-stringify` produces for any property listed
+ * here but not on {@link MediaItemView} (or vice versa).
+ */
+export const mediaItemSchema = {
+  $id: 'MediaItem',
+  type: 'object',
+  required: ['kind', 'id', 'display_order', 'aspect_ratio', 'variants'],
+  properties: {
+    kind: { type: 'string', enum: ['image'] },
+    id: { type: 'string', format: 'uuid' },
+    display_order: { type: 'integer' },
+    aspect_ratio: { type: ['number', 'null'] },
+    variants: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['width', 'url'],
+        properties: {
+          width: { type: 'integer' },
+          url: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+/**
  * Builds the response shape for a contestant's media array (spec §8, "Media
  * Representation"). Which variant widths exist prefers the widths actually
  * written at upload time (`variantWidths`, spec §11.1) so that changing

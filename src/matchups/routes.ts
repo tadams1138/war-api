@@ -4,52 +4,26 @@ import type { Database } from '../db/types.js';
 import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
 import { castVoteForVoter } from '../votes/votesService.js';
-import { errorResponseSchema } from '../openapi/schemas.js';
+import { errorResponseSchema } from '../shared/httpOutcomes.js';
 import { countMatchupsForWar, countVotesByVoterInWar } from './matchupsRepository.js';
-import { nextMatchupForVoter } from './matchupsService.js';
+import { nextMatchupForVoter, nextMatchupResponseSchema } from './matchupsService.js';
 
-const contestantViewSchema = {
+/**
+ * Fastify's own request-validation error envelope (ajv, via
+ * `@fastify/ajv-compiler`) -- distinct from this route's own `{ error }`
+ * shape used for its other 4xx responses. Produced for a malformed body
+ * (missing or non-UUID `winner_id`) before the handler ever runs, so
+ * `castVoteForVoter`'s own `invalidWinner` (422) is never reached in that
+ * case. Verified against Fastify 5.11.0; transcribed into spec §11.2.1.
+ */
+const validationErrorResponseSchema = {
   type: 'object',
-  required: ['id', 'name', 'media'],
+  required: ['statusCode', 'code', 'error', 'message'],
   properties: {
-    id: { type: 'string', format: 'uuid' },
-    name: { type: 'string' },
-    media: { type: 'array', items: { $ref: 'MediaItem#' } },
-  },
-};
-
-const nextMatchupResponseSchema = {
-  type: 'object',
-  required: ['matchup', 'progress'],
-  properties: {
-    matchup: {
-      type: 'object',
-      required: ['id', 'left', 'right'],
-      properties: {
-        id: { type: 'string', format: 'uuid' },
-        // Written as its own copy of `left`'s schema rather than an
-        // internal `$ref`, per spec §11.2.1 -- the two simply describe the
-        // same shape.
-        left: contestantViewSchema,
-        right: contestantViewSchema,
-      },
-    },
-    progress: {
-      type: 'object',
-      required: ['voted', 'total'],
-      properties: {
-        voted: { type: 'integer' },
-        total: { type: 'integer' },
-      },
-    },
-    prefetch: {
-      type: 'object',
-      required: ['matchup_id', 'media'],
-      properties: {
-        matchup_id: { type: 'string', format: 'uuid' },
-        media: { type: 'array', items: { $ref: 'MediaItem#' } },
-      },
-    },
+    statusCode: { type: 'integer' },
+    code: { type: 'string' },
+    error: { type: 'string' },
+    message: { type: 'string' },
   },
 };
 
@@ -101,6 +75,7 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
           required: ['status'],
           properties: { status: { type: 'string', enum: ['already recorded'] } },
         },
+        400: validationErrorResponseSchema,
         409: errorResponseSchema,
         422: errorResponseSchema,
         403: errorResponseSchema,

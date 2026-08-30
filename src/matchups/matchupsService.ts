@@ -20,6 +20,62 @@ export interface NextMatchupView {
   prefetch?: { matchup_id: string; media: MediaItemView[] };
 }
 
+/**
+ * The response body JSON Schema for {@link ContestantView}, the shape
+ * `NextMatchupView`'s `matchup.left`/`matchup.right` share. Kept beside the
+ * interface it mirrors -- see `mediaItemSchema`
+ * (`../contestants/mediaPresenter.ts`) for why.
+ */
+export const contestantViewSchema = {
+  type: 'object',
+  required: ['id', 'name', 'media'],
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    name: { type: 'string' },
+    media: { type: 'array', items: { $ref: 'MediaItem#' } },
+  },
+};
+
+/**
+ * The response body JSON Schema for {@link NextMatchupView} (spec §11.2.1).
+ * `prefetch` is deliberately absent from `required` -- it is present only
+ * when a following unvoted pair exists.
+ */
+export const nextMatchupResponseSchema = {
+  type: 'object',
+  required: ['matchup', 'progress'],
+  properties: {
+    matchup: {
+      type: 'object',
+      required: ['id', 'left', 'right'],
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        // Written as its own copy of `left`'s schema rather than an
+        // internal `$ref`, per spec §11.2.1 -- the two simply describe the
+        // same shape.
+        left: contestantViewSchema,
+        right: contestantViewSchema,
+      },
+    },
+    progress: {
+      type: 'object',
+      required: ['voted', 'total'],
+      properties: {
+        voted: { type: 'integer' },
+        total: { type: 'integer' },
+      },
+    },
+    prefetch: {
+      type: 'object',
+      required: ['matchup_id', 'media'],
+      properties: {
+        matchup_id: { type: 'string', format: 'uuid' },
+        media: { type: 'array', items: { $ref: 'MediaItem#' } },
+      },
+    },
+  },
+};
+
 function contestantView(
   contestantId: string,
   contestantsById: Map<string, Contestant>,

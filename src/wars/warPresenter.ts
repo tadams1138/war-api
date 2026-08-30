@@ -17,6 +17,69 @@ export interface WarSummaryView {
   ends_at: string | null;
 }
 
+/**
+ * Properties shared by {@link WarSummaryView}'s schema and
+ * {@link WarDetailView}'s (which is a `WarSummary` plus `contestants`).
+ * Kept as a standalone map, not a schema, so `warDetailResponseSchema` can
+ * build a single flat response schema instead of relying on `allOf`
+ * merging. Kept beside the interfaces they mirror -- see `mediaItemSchema`
+ * (`../contestants/mediaPresenter.ts`) for why.
+ */
+const warSummaryProperties = {
+  id: { type: 'string', format: 'uuid' },
+  title: { type: 'string' },
+  category: { type: ['string', 'null'] },
+  status: { type: 'string', enum: ['draft', 'active', 'closed'] },
+  visibility: { type: 'string', enum: ['public', 'invite_only'] },
+  media_mode: { type: 'string', enum: ['image'] },
+  contestant_schema: {
+    type: 'array',
+    items: {
+      type: 'object',
+      required: ['key', 'label', 'type'],
+      properties: {
+        key: { type: 'string' },
+        label: { type: 'string' },
+        type: { type: 'string', enum: ['string', 'number', 'text', 'url', 'date'] },
+      },
+    },
+  },
+  ends_at: { type: ['string', 'null'], format: 'date-time' },
+};
+
+const warSummaryRequired = [
+  'id',
+  'title',
+  'category',
+  'status',
+  'visibility',
+  'media_mode',
+  'contestant_schema',
+  'ends_at',
+];
+
+/** The response body JSON Schema for {@link WarSummaryView} (spec §11.2.1). Registered under `$id: "WarSummary"`. */
+export const warSummarySchema = {
+  $id: 'WarSummary',
+  type: 'object',
+  required: warSummaryRequired,
+  properties: warSummaryProperties,
+};
+
+/**
+ * The response body JSON Schema for {@link WarDetailView} (spec §11.2.1):
+ * `warSummaryProperties` plus a required `contestants` array. Not
+ * registered under a shared `$id` -- only `GET /wars/:id` uses it.
+ */
+export const warDetailResponseSchema = {
+  type: 'object',
+  required: [...warSummaryRequired, 'contestants'],
+  properties: {
+    ...warSummaryProperties,
+    contestants: { type: 'array', items: { $ref: 'ContestantDetail#' } },
+  },
+};
+
 export function presentWarSummary(war: War, now: Date): WarSummaryView {
   return {
     id: war.id,

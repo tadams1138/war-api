@@ -3,9 +3,8 @@ import type { Kysely } from 'kysely';
 import type { Database } from '../db/types.js';
 import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
-import { replyForOutcome } from '../shared/httpOutcomes.js';
-import { errorResponseSchema, warDetailResponseSchema } from '../openapi/schemas.js';
-import { presentWarDetail, presentWarSummary } from './warPresenter.js';
+import { errorResponseSchema, replyForOutcome } from '../shared/httpOutcomes.js';
+import { presentWarDetail, presentWarSummary, warDetailResponseSchema } from './warPresenter.js';
 import { activateWar, closeWar, createWarForVoter, getWar, joinWar, patchWar } from './warsService.js';
 import { closeExpiredWars, listWars } from './warsRepository.js';
 

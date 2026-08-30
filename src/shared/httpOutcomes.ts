@@ -5,6 +5,19 @@ import type { Forbidden, NotActive, NotDraft, NotFound, ValidationError } from '
 export type HttpFailure = NotFound | Forbidden | NotDraft | NotActive | ValidationError;
 
 /**
+ * The response body JSON Schema for the `{ "error": string }` shape every
+ * failure response in the Core Voting Loop slice uses (spec §11.2.1) --
+ * including, but not limited to, the ones `replyForOutcome` itself sends.
+ * Not `$id`-registered: shared by direct import/`$ref`-by-object rather
+ * than by name, since no route needs to reference it before it exists.
+ */
+export const errorResponseSchema = {
+  type: 'object',
+  required: ['error'],
+  properties: { error: { type: 'string' } },
+};
+
+/**
  * Maps a failed `MutationOutcome` (or any of the bespoke unions built from
  * the same failure variants) to its HTTP response. Takes the whole outcome
  * so it reads `errors` itself — callers no longer repeat
