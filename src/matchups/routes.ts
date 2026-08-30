@@ -4,8 +4,54 @@ import type { Database } from '../db/types.js';
 import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
 import { castVoteForVoter } from '../votes/votesService.js';
+import { errorResponseSchema } from '../openapi/schemas.js';
 import { countMatchupsForWar, countVotesByVoterInWar } from './matchupsRepository.js';
 import { nextMatchupForVoter } from './matchupsService.js';
+
+const contestantViewSchema = {
+  type: 'object',
+  required: ['id', 'name', 'media'],
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    name: { type: 'string' },
+    media: { type: 'array', items: { $ref: 'MediaItem#' } },
+  },
+};
+
+const nextMatchupResponseSchema = {
+  type: 'object',
+  required: ['matchup', 'progress'],
+  properties: {
+    matchup: {
+      type: 'object',
+      required: ['id', 'left', 'right'],
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        // Written as its own copy of `left`'s schema rather than an
+        // internal `$ref`, per spec §11.2.1 -- the two simply describe the
+        // same shape.
+        left: contestantViewSchema,
+        right: contestantViewSchema,
+      },
+    },
+    progress: {
+      type: 'object',
+      required: ['voted', 'total'],
+      properties: {
+        voted: { type: 'integer' },
+        total: { type: 'integer' },
+      },
+    },
+    prefetch: {
+      type: 'object',
+      required: ['matchup_id', 'media'],
+      properties: {
+        matchup_id: { type: 'string', format: 'uuid' },
+        media: { type: 'array', items: { $ref: 'MediaItem#' } },
+      },
+    },
+  },
+};
 
 export interface MatchupsRouteDeps {
   db: Kysely<Database>;
@@ -18,7 +64,7 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
 
   app.get<{ Params: { id: string } }>(
     '/wars/:id/matchups/next',
-    bearerAuthRoute(auth),
+    bearerAuthRoute(auth, { response: { 200: nextMatchupResponseSchema, 204: {} } }),
     async (request, reply) => {
       const view = await nextMatchupForVoter(db, request.params.id, request.voterId!, deps.publicBaseUrl);
       if (!view) {
@@ -42,7 +88,25 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
 
   app.post<{ Params: { id: string; mId: string }; Body: { winner_id: string } }>(
     '/wars/:id/matchups/:mId/vote',
-    bearerAuthRoute(auth),
+    bearerAuthRoute(auth, {
+      body: {
+        type: 'object',
+        required: ['winner_id'],
+        properties: { winner_id: { type: 'string', format: 'uuid' } },
+      },
+      response: {
+        201: { type: 'object', required: ['vote_id'], properties: { vote_id: { type: 'string', format: 'uuid' } } },
+        200: {
+          type: 'object',
+          required: ['status'],
+          properties: { status: { type: 'string', enum: ['already recorded'] } },
+        },
+        409: errorResponseSchema,
+        422: errorResponseSchema,
+        403: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    }),
     async (request, reply) => {
       const outcome = await castVoteForVoter(db, {
         warId: request.params.id,
