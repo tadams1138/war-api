@@ -10,6 +10,8 @@ import { registerAuthRoutes } from './auth/routes.js';
 import type { ObjectStorage } from './contestants/storage.js';
 import { registerContestantsRoutes } from './contestants/routes.js';
 import { registerMatchupsRoutes } from './matchups/routes.js';
+import { registerOpenApiPlugin } from './openapi/plugin.js';
+import { registerOpenApiRoutes } from './openapi/routes.js';
 import { registerRankingsRoutes } from './rankings/routes.js';
 import { registerWarsRoutes } from './wars/routes.js';
 import type { AppConfig } from './config.js';
@@ -29,6 +31,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(cookie);
   await app.register(cors, { origin: deps.config.uiOrigins, credentials: true });
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
+  // Registered before any route so its onRoute hook observes every one of
+  // them, including those added inside nested, prefixed plugins below.
+  await registerOpenApiPlugin(app, API_PREFIX);
 
   // App Platform's health_check (platform/{env}.yaml in war-infra) polls
   // this exact path. No auth, no dependencies — a check that the process is
@@ -43,6 +48,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   await app.register(
     async (instance) => {
+      registerOpenApiRoutes(instance);
       registerAuthRoutes(instance, authDeps, {
         uiOrigins: deps.config.uiOrigins,
         googleRedirectUri: deps.config.google.redirectUri,
