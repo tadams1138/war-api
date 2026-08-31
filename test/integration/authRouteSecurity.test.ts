@@ -31,7 +31,15 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
     if (!stateCookie) {
       throw new Error('login did not set an oauth_state cookie');
     }
-    return { agent, stateCookie };
+    // The redirect_uri this login leg actually advertised to Google, so
+    // tests can assert it against the exchange leg's redirect_uri rather
+    // than each independently against the same hardcoded literal.
+    const location: string | undefined = loginResponse.headers.location;
+    const advertisedRedirectUri = location ? new URL(location).searchParams.get('redirect_uri') : null;
+    if (!advertisedRedirectUri) {
+      throw new Error('login did not advertise a redirect_uri');
+    }
+    return { agent, stateCookie, advertisedRedirectUri };
   }
 
   it('rejects a callback that omits the state query parameter entirely', async () => {
@@ -81,7 +89,7 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
 
   it('accepts a callback whose state matches the cookie', async () => {
     // Arrange
-    const { agent, stateCookie } = await beginLogin();
+    const { agent, stateCookie, advertisedRedirectUri } = await beginLogin();
     const code = randomUUID();
     harness.google.registerCode(code, { providerUserId: 'matches@example.com', displayName: 'Matches', avatarUrl: null });
 
@@ -95,8 +103,12 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
     expect(response.status).toBeGreaterThanOrEqual(300);
     expect(response.status).toBeLessThan(400);
     expect(extractCookieValue(response.get('Set-Cookie'), 'refresh_token')).toBeTruthy();
-    expect(harness.google.lastExchangeCallbackUrl?.origin).toBe('https://api.test');
-    expect(harness.google.lastExchangeCallbackUrl?.pathname).toBe('/api/v1/auth/google/callback');
+    // The redirect_uri Google sees in the exchange leg must equal the one it
+    // saw in the authorization leg -- not just each independently matching
+    // the same hardcoded literal -- since Google compares the two for exact
+    // equality.
+    const exchanged = harness.google.lastExchangeCallbackUrl!;
+    expect(`${exchanged.origin}${exchanged.pathname}`).toBe(advertisedRedirectUri);
   });
 
   it('passes Google\'s real callback query parameters (e.g. iss) through to exchangeCode unchanged, not a synthetic reconstruction', async () => {

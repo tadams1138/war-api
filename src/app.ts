@@ -56,7 +56,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       registerAuthRoutes(instance, authDeps, {
         uiOrigins: deps.config.uiOrigins,
         googleRedirectUri: deps.config.google.redirectUri,
-        apiBaseUrl: deps.config.apiBaseUrl,
       });
       registerWarsRoutes(instance, {
         db: deps.db,
