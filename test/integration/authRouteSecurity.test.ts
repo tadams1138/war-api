@@ -4,7 +4,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { hashRefreshToken } from '../../src/auth/refreshTokens.js';
 import { findRefreshTokenByHash } from '../../src/auth/refreshTokensRepository.js';
 import { extractCookieValue } from '../setup/httpHelpers.js';
-import { loginAndCallback, postRefresh } from '../setup/authFlow.js';
+import { beginLogin, loginAndCallback, postRefresh } from '../setup/authFlow.js';
 import { makeVoter } from '../setup/fixtures.js';
 import { buildTestHarness, type TestHarness } from '../setup/testApp.js';
 import { truncateAll } from '../setup/testDb.js';
@@ -24,27 +24,9 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
     await harness.app.ready();
   });
 
-  async function beginLogin() {
-    const agent = request(harness.app.server);
-    const loginResponse = await agent.get('/api/v1/auth/google/login');
-    const stateCookie = extractCookieValue(loginResponse.get('Set-Cookie'), 'oauth_state');
-    if (!stateCookie) {
-      throw new Error('login did not set an oauth_state cookie');
-    }
-    // The redirect_uri this login leg actually advertised to Google, so
-    // tests can assert it against the exchange leg's redirect_uri rather
-    // than each independently against the same hardcoded literal.
-    const location: string | undefined = loginResponse.headers.location;
-    const advertisedRedirectUri = location ? new URL(location).searchParams.get('redirect_uri') : null;
-    if (!advertisedRedirectUri) {
-      throw new Error('login did not advertise a redirect_uri');
-    }
-    return { agent, stateCookie, advertisedRedirectUri };
-  }
-
   it('rejects a callback that omits the state query parameter entirely', async () => {
     // Arrange
-    const { agent, stateCookie } = await beginLogin();
+    const { agent, stateCookie } = await beginLogin(harness);
     const code = randomUUID();
     harness.google.registerCode(code, { providerUserId: 'no-state@example.com', displayName: 'No State', avatarUrl: null });
 
@@ -73,7 +55,7 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
 
   it('rejects a callback whose state does not match the cookie', async () => {
     // Arrange
-    const { agent } = await beginLogin();
+    const { agent } = await beginLogin(harness);
     const code = randomUUID();
     harness.google.registerCode(code, { providerUserId: 'mismatch@example.com', displayName: 'Mismatch', avatarUrl: null });
 
@@ -89,7 +71,7 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
 
   it('accepts a callback whose state matches the cookie', async () => {
     // Arrange
-    const { agent, stateCookie, advertisedRedirectUri } = await beginLogin();
+    const { agent, stateCookie, advertisedRedirectUri } = await beginLogin(harness);
     const code = randomUUID();
     harness.google.registerCode(code, { providerUserId: 'matches@example.com', displayName: 'Matches', avatarUrl: null });
 
@@ -113,7 +95,7 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
 
   it('passes Google\'s real callback query parameters (e.g. iss) through to exchangeCode unchanged, not a synthetic reconstruction', async () => {
     // Arrange
-    const { agent, stateCookie } = await beginLogin();
+    const { agent, stateCookie } = await beginLogin(harness);
     const code = randomUUID();
     harness.google.registerCode(code, { providerUserId: 'iss-fidelity@example.com', displayName: 'Iss Fidelity', avatarUrl: null });
 
@@ -142,6 +124,146 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
     expect(callbackUrl?.searchParams.get('scope')).toBe('openid email profile');
     expect(callbackUrl?.searchParams.get('authuser')).toBe('0');
     expect(callbackUrl?.searchParams.get('prompt')).toBe('consent');
+  });
+});
+
+/**
+ * The `502` boundary of spec §4.1 #4 -- deliberately not a Gherkin scenario
+ * (stage 1's design review reasoning: a wire-level robustness property, the
+ * same category as the redirect-URI-pinning tests above). Both the
+ * exchange-failure mapping and the downstream-failure exclusion are
+ * asserted here so the boundary's scope is pinned exactly, not just its
+ * existence.
+ */
+describe('Callback exchange failures (spec §4.1 #4)', () => {
+  let harness: TestHarness;
+
+  beforeEach(async () => {
+    await truncateAll();
+    harness = await buildTestHarness();
+    await harness.app.ready();
+  });
+
+  it('maps an openid-client/oauth4webapi validation error from the exchange to a 502, not a raw 500', async () => {
+    // Arrange: a class-typed error carrying the library's own internal
+    // error code as its message -- exactly the shape that reached three
+    // separate users' browsers as an opaque 500 (spec §4.1 #4).
+    class FakeOperationProcessingError extends Error {
+      code = 'OAUTH_INVALID_RESPONSE';
+      constructor() {
+        super('OAUTH_INVALID_RESPONSE');
+        this.name = 'OperationProcessingError';
+      }
+    }
+    const { agent, stateCookie } = await beginLogin(harness);
+    const code = randomUUID();
+    harness.google.failNextExchange(new FakeOperationProcessingError());
+
+    // Act
+    const response = await agent.get('/api/v1/auth/google/callback').query({ code, state: stateCookie }).set('Cookie', `oauth_state=${stateCookie}`);
+
+    // Assert
+    expect(response.status).toBe(502);
+    expect((response.body as { error?: string }).error).toBe('authentication with Google failed');
+    expect((response.body as { error?: string }).error).not.toContain('OAUTH_INVALID_RESPONSE');
+  });
+
+  it('maps a network failure reaching Google to a 502', async () => {
+    // Arrange
+    const { agent, stateCookie } = await beginLogin(harness);
+    const code = randomUUID();
+    harness.google.failNextExchange(new Error('getaddrinfo ENOTFOUND accounts.google.com'));
+
+    // Act
+    const response = await agent.get('/api/v1/auth/google/callback').query({ code, state: stateCookie }).set('Cookie', `oauth_state=${stateCookie}`);
+
+    // Assert
+    expect(response.status).toBe(502);
+    expect(extractCookieValue(response.get('Set-Cookie'), 'refresh_token')).toBeUndefined();
+  });
+
+  it('leaves a failure downstream of a successful exchange (the voter upsert) as an unmapped 500, not 502', async () => {
+    // Arrange: a provider_user_id exceeding voters.provider_user_id's
+    // VARCHAR(256) forces the insert itself to fail -- a real defect in
+    // this API's own logic, not the provider's response being unusable.
+    const { agent, stateCookie } = await beginLogin(harness);
+    const code = randomUUID();
+    harness.google.registerCode(code, {
+      providerUserId: 'x'.repeat(300),
+      displayName: 'Downstream Failure',
+      avatarUrl: null,
+    });
+
+    // Act
+    const response = await agent.get('/api/v1/auth/google/callback').query({ code, state: stateCookie }).set('Cookie', `oauth_state=${stateCookie}`);
+
+    // Assert: a 500 alone doesn't prove it happened *downstream* of a
+    // successful exchange -- pin that the exchange itself actually ran
+    // (design review finding 5), not just that some 500 occurred.
+    expect(response.status).toBe(500);
+    expect(harness.google.lastExchangeCallbackUrl).toBeDefined();
+  });
+});
+
+/**
+ * The `error`-first precedence and independence spec §4.1 #1 requires --
+ * checked before, and regardless of, the state-cookie check (design review
+ * finding 1: the acceptance scenario's one existing test happens to send a
+ * matching cookie, which would pass even a subtly wrong
+ * `if (error && expectedState)`).
+ */
+describe('OAuth error parameter precedence and independence (spec §4.1 #1)', () => {
+  let harness: TestHarness;
+
+  beforeEach(async () => {
+    await truncateAll();
+    harness = await buildTestHarness();
+    await harness.app.ready();
+  });
+
+  it('is honored even when a state mismatch would otherwise fire, and never reaches the exchange', async () => {
+    // Arrange: a real, valid oauth_state cookie is present, but the query's
+    // own `state` is deliberately wrong -- if `error` were checked only
+    // after (or gated on) state matching, this would come back 400 "state
+    // mismatch" instead.
+    const { agent, stateCookie } = await beginLogin(harness);
+    const code = randomUUID();
+
+    // Act
+    const response = await agent
+      .get('/api/v1/auth/google/callback')
+      .query({ error: 'access_denied', code, state: 'not-the-real-state' })
+      .set('Cookie', `oauth_state=${stateCookie}`);
+
+    // Assert
+    expect(response.status).toBe(403);
+    expect((response.body as { reason?: string }).reason).toBe('access_denied');
+    expect(harness.google.lastExchangeCallbackUrl).toBeUndefined();
+  });
+
+  it('is honored with no oauth_state cookie present at all', async () => {
+    // Arrange: no login leg at all, so no cookie is ever set.
+    await harness.app.ready();
+    const agent = request(harness.app.server);
+
+    // Act
+    const response = await agent.get('/api/v1/auth/google/callback').query({ error: 'access_denied' });
+
+    // Assert
+    expect(response.status).toBe(403);
+    expect((response.body as { reason?: string }).reason).toBe('access_denied');
+  });
+
+  it('treats an empty error parameter as absent and falls through to the missing-code check', async () => {
+    // Arrange
+    const { agent, stateCookie } = await beginLogin(harness);
+
+    // Act
+    const response = await agent.get('/api/v1/auth/google/callback').query({ error: '' }).set('Cookie', `oauth_state=${stateCookie}`);
+
+    // Assert
+    expect(response.status).toBe(400);
+    expect((response.body as { error?: string }).error).toBe('missing code');
   });
 });
 

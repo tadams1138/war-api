@@ -7,6 +7,7 @@ import { contestantDetailSchema, type ContestantDetailView } from '../../src/con
 import { warSummarySchema, type WarSummaryView } from '../../src/wars/warPresenter.js';
 import { nextMatchupResponseSchema, type NextMatchupView } from '../../src/matchups/matchupsService.js';
 import { voteForbiddenResponseSchema, type VoteForbiddenView } from '../../src/matchups/routes.js';
+import { oauthDeclinedResponseSchema, type OAuthDeclinedView } from '../../src/auth/routes.js';
 
 /**
  * Pins every response body schema (spec §11.2.1) to full byte-for-byte
@@ -225,6 +226,18 @@ describe('response body schemas serialize every field (spec §11.2.1)', () => {
     // Arrange
     const fixture: VoteForbiddenView = { error: 'voter has not joined this War', reason: 'not_joined' };
     const app = buildProbeApp(voteForbiddenResponseSchema, fixture);
+
+    // Act
+    const response = await app.inject({ method: 'GET', url: '/probe' });
+
+    // Assert
+    expect(response.body).toBe(JSON.stringify(fixture));
+  });
+
+  it('OAuthDeclinedView: an arbitrary provider-supplied reason survives verbatim (spec §4.1 #1: not a closed enum)', async () => {
+    // Arrange
+    const fixture: OAuthDeclinedView = { error: 'authorization declined', reason: 'temporarily_unavailable' };
+    const app = buildProbeApp(oauthDeclinedResponseSchema, fixture);
 
     // Act
     const response = await app.inject({ method: 'GET', url: '/probe' });

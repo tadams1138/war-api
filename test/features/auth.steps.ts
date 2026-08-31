@@ -5,7 +5,7 @@ import { describeFeature, loadFeature } from '@amiceli/vitest-cucumber';
 import { hashRefreshToken } from '../../src/auth/refreshTokens.js';
 import { findRefreshTokenByHash } from '../../src/auth/refreshTokensRepository.js';
 import { findVoterById } from '../../src/auth/votersRepository.js';
-import { loginAndCallback, postRefresh } from '../setup/authFlow.js';
+import { beginLogin, loginAndCallback, postRefresh } from '../setup/authFlow.js';
 import { buildTestHarness, type TestHarness } from '../setup/testApp.js';
 import { truncateAll } from '../setup/testDb.js';
 import { extractCookieValue, findSetCookie } from '../setup/httpHelpers.js';
@@ -173,6 +173,39 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       const setCookie = findSetCookie(callbackResponse.get('Set-Cookie'), 'refresh_token');
       expect(setCookie).toBeDefined();
       expect(setCookie?.toLowerCase()).toContain('httponly');
+    });
+  });
+
+  Scenario("A user declines Google's consent prompt", ({ Given, When, Then, And }) => {
+    let stateCookie: string;
+    let response: request.Response;
+
+    Given('a user who began signing in with Google', async () => {
+      const begun = await beginLogin(harness);
+      stateCookie = begun.stateCookie;
+    });
+
+    When("Google's callback reports \"access_denied\" instead of an authorization code", async () => {
+      response = await request(harness.app.server)
+        .get('/api/v1/auth/google/callback')
+        .query({ error: 'access_denied' })
+        .set('Cookie', `oauth_state=${stateCookie}`);
+    });
+
+    Then('the response status is 403', () => {
+      expect(response.status).toBe(403);
+    });
+
+    And('the reported reason is "access_denied"', () => {
+      // Pins both halves of §4.1 #1's body (design review finding 4):
+      // "error" is the fixed contract string, "reason" is the provider's
+      // code passed through verbatim.
+      expect((response.body as { error?: string; reason?: string }).error).toBe('authorization declined');
+      expect((response.body as { error?: string; reason?: string }).reason).toBe('access_denied');
+    });
+
+    And('no refresh token cookie is set', () => {
+      expect(extractCookieValue(response.get('Set-Cookie'), 'refresh_token')).toBeUndefined();
     });
   });
 

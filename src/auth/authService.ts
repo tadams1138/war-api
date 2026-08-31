@@ -9,7 +9,7 @@ import {
   rotateRefreshToken,
 } from './refreshTokensRepository.js';
 import { findOrCreateVoter, findVoterById, type Voter } from './votersRepository.js';
-import type { GoogleAuthProvider } from './googleProvider.js';
+import type { GoogleAuthProvider, OAuthProfile } from './googleProvider.js';
 
 export interface AuthDependencies {
   db: Kysely<Database>;
@@ -32,11 +32,36 @@ export async function beginLogin(
   return { state, authorizationUrl };
 }
 
-export async function completeCallback(
-  deps: AuthDependencies,
-  params: { callbackUrl: URL },
-): Promise<CallbackResult> {
-  const profile = await deps.google.exchangeCode(params);
+export type ExchangeResult =
+  | { kind: 'exchanged'; profile: OAuthProfile }
+  | { kind: 'exchangeFailed'; cause: unknown };
+
+/**
+ * The one call in the callback flow that is a genuine external dependency
+ * (spec §4.1 #4: "a network round-trip to Google"). Split out from
+ * {@link completeCallback} so the route can act on *only* this call's
+ * failures as the `502` boundary — a failure here (network failure, an
+ * invalid/missing `iss`, a missing subject claim, any
+ * `openid-client`/`oauth4webapi` validation error) maps to `502`, while a
+ * failure in what comes after (voter upsert, refresh-token issuance) is
+ * this API's own fault and must keep surfacing as an unmapped `500`.
+ *
+ * Owns its own try/catch and returns a discriminated union rather than
+ * throwing, so the boundary is enforced by the type checker at the call
+ * site (an exhaustive `kind` check) instead of by brace placement around a
+ * bare `try` that a later edit could silently widen.
+ */
+export async function exchangeGoogleCode(deps: AuthDependencies, params: { callbackUrl: URL }): Promise<ExchangeResult> {
+  try {
+    const profile = await deps.google.exchangeCode(params);
+    return { kind: 'exchanged', profile };
+  } catch (cause) {
+    return { kind: 'exchangeFailed', cause };
+  }
+}
+
+/** Upserts the Voter and issues a refresh-token family for an already-exchanged OAuth profile. */
+export async function completeCallback(deps: AuthDependencies, profile: OAuthProfile): Promise<CallbackResult> {
   const { voter, created } = await findOrCreateVoter(deps.db, 'google', profile);
 
   const refreshTokenValue = generateRefreshTokenValue();
