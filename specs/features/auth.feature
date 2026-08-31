@@ -29,6 +29,13 @@ Feature: Google OAuth Authentication
     Then the redirect location contains no token in its path, query, or fragment
     And the refresh token is set as an HttpOnly cookie
 
+  Scenario: A user declines Google's consent prompt
+    Given a user who began signing in with Google
+    When Google's callback reports "access_denied" instead of an authorization code
+    Then the response status is 403
+    And the reported reason is "access_denied"
+    And no refresh token cookie is set
+
   Scenario: The SPA obtains its first JWT by exchanging the cookie
     Given a refresh cookie set by a completed OAuth callback
     When the SPA POSTs to /api/v1/auth/refresh
