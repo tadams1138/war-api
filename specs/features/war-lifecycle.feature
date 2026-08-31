@@ -27,3 +27,8 @@ Feature: War Lifecycle
     And an authenticated voter who has not joined
     When they POST to /api/v1/wars/:id/join
     Then a war_membership record is created for that voter and War
+
+  Scenario: The browse list reports each War's contestant count
+    Given a War with 3 contestants
+    When anyone GETs /api/v1/wars
+    Then that War's entry in the list has contestant_count 3

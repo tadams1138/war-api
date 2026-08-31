@@ -6,6 +6,7 @@ import { resolvedAttributeSchema, type ResolvedAttribute } from '../../src/conte
 import { contestantDetailSchema, type ContestantDetailView } from '../../src/contestants/contestantPresenter.js';
 import { warSummarySchema, type WarSummaryView } from '../../src/wars/warPresenter.js';
 import { nextMatchupResponseSchema, type NextMatchupView } from '../../src/matchups/matchupsService.js';
+import { voteForbiddenResponseSchema, type VoteForbiddenView } from '../../src/matchups/routes.js';
 
 /**
  * Pins every response body schema (spec §11.2.1) to full byte-for-byte
@@ -86,6 +87,7 @@ describe('response body schemas serialize every field (spec §11.2.1)', () => {
       media_mode: 'image',
       contestant_schema: [{ key: 'height', label: 'Height', type: 'number' }],
       ends_at: '2026-01-01T00:00:00.000Z',
+      contestant_count: 4,
     };
     const app = buildProbeApp(warSummarySchema, fixture);
 
@@ -107,6 +109,7 @@ describe('response body schemas serialize every field (spec §11.2.1)', () => {
       media_mode: 'image',
       contestant_schema: [],
       ends_at: null,
+      contestant_count: 0,
     };
     const app = buildProbeApp(warSummarySchema, fixture);
 
@@ -198,6 +201,30 @@ describe('response body schemas serialize every field (spec §11.2.1)', () => {
       progress: { voted: 10, total: 10 },
     };
     const app = buildProbeApp(nextMatchupResponseSchema, fixture);
+
+    // Act
+    const response = await app.inject({ method: 'GET', url: '/probe' });
+
+    // Assert
+    expect(response.body).toBe(JSON.stringify(fixture));
+  });
+
+  it('VoteForbiddenView: war_not_active', async () => {
+    // Arrange
+    const fixture: VoteForbiddenView = { error: 'War is not active', reason: 'war_not_active' };
+    const app = buildProbeApp(voteForbiddenResponseSchema, fixture);
+
+    // Act
+    const response = await app.inject({ method: 'GET', url: '/probe' });
+
+    // Assert
+    expect(response.body).toBe(JSON.stringify(fixture));
+  });
+
+  it('VoteForbiddenView: not_joined', async () => {
+    // Arrange
+    const fixture: VoteForbiddenView = { error: 'voter has not joined this War', reason: 'not_joined' };
+    const app = buildProbeApp(voteForbiddenResponseSchema, fixture);
 
     // Act
     const response = await app.inject({ method: 'GET', url: '/probe' });

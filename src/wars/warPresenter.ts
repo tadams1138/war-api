@@ -15,6 +15,7 @@ export interface WarSummaryView {
   media_mode: string;
   contestant_schema: unknown;
   ends_at: string | null;
+  contestant_count: number;
 }
 
 /**
@@ -45,6 +46,7 @@ const warSummaryProperties = {
     },
   },
   ends_at: { type: ['string', 'null'], format: 'date-time' },
+  contestant_count: { type: 'integer', minimum: 0 },
 };
 
 const warSummaryRequired = [
@@ -56,6 +58,7 @@ const warSummaryRequired = [
   'media_mode',
   'contestant_schema',
   'ends_at',
+  'contestant_count',
 ];
 
 /** The response body JSON Schema for {@link WarSummaryView} (spec §11.2.1). Registered under `$id: "WarSummary"`. */
@@ -80,7 +83,7 @@ export const warDetailResponseSchema = {
   },
 };
 
-export function presentWarSummary(war: War, now: Date): WarSummaryView {
+export function presentWarSummary(war: War, now: Date, contestantCount: number): WarSummaryView {
   return {
     id: war.id,
     title: war.title,
@@ -90,6 +93,7 @@ export function presentWarSummary(war: War, now: Date): WarSummaryView {
     media_mode: war.mediaMode,
     contestant_schema: war.contestantSchema,
     ends_at: war.endsAt ? war.endsAt.toISOString() : null,
+    contestant_count: contestantCount,
   };
 }
 
@@ -109,5 +113,5 @@ export async function presentWarDetail(
     contestants.map((c) => c.id),
   );
   const views = contestants.map((c) => presentContestant(c, war, mediaByContestant.get(c.id) ?? [], publicBaseUrl));
-  return { ...presentWarSummary(war, now), contestants: views };
+  return { ...presentWarSummary(war, now, contestants.length), contestants: views };
 }

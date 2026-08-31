@@ -169,4 +169,29 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
       expect(row).toBeDefined();
     });
   });
+
+  Scenario("The browse list reports each War's contestant count", ({ Given, When, Then }) => {
+    let warId: string;
+    let response: request.Response;
+
+    Given('a War with 3 contestants', async () => {
+      const creator = await makeVoter(harness.db, 'creator');
+      // Left in "draft" deliberately (spec §11.2.1 addendum): contestant_count
+      // must reflect the contestants rows regardless of the War's status.
+      const { war } = await makeDraftWarWithContestants(harness.db, harness.storage, creator.id, 3);
+      warId = war.id;
+    });
+
+    When('anyone GETs /api/v1/wars', async () => {
+      await harness.app.ready();
+      response = await request(harness.app.server).get('/api/v1/wars');
+    });
+
+    Then("that War's entry in the list has contestant_count 3", () => {
+      const wars = response.body.wars as { id: string; contestant_count: number }[];
+      const entry = wars.find((war) => war.id === warId);
+      expect(entry).toBeDefined();
+      expect(entry?.contestant_count).toBe(3);
+    });
+  });
 });
