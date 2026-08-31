@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { assertProductionConfig, defaultPublicBaseUrl, loadConfig, type AppConfig } from '../../src/config.js';
+import {
+  assertProductionConfig,
+  defaultPublicBaseUrl,
+  DEFAULT_UI_ORIGIN,
+  loadConfig,
+  type AppConfig,
+} from '../../src/config.js';
 
 function fullyPopulatedConfig(): AppConfig {
   return loadConfig({
@@ -9,6 +15,7 @@ function fullyPopulatedConfig(): AppConfig {
     GOOGLE_CLIENT_ID: 'a-real-client-id',
     GOOGLE_CLIENT_SECRET: 'a-real-client-secret',
     PUBLIC_BASE_URL: 'https://staging.war.tmad.dev',
+    UI_ORIGINS: 'https://staging.war.tmad.dev',
   } as NodeJS.ProcessEnv);
 }
 
@@ -110,5 +117,32 @@ describe('assertProductionConfig', () => {
 
     // Act & Assert
     expect(() => assertProductionConfig(config)).toThrow(/absolute http/i);
+  });
+
+  it('throws when uiOrigins is left at its localhost default', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+    config.uiOrigins = [DEFAULT_UI_ORIGIN];
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).toThrow(/ui_origins/i);
+  });
+
+  it('throws when uiOrigins is empty', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+    config.uiOrigins = [];
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).toThrow(/ui_origins/i);
+  });
+
+  it('does not throw when uiOrigins is a real, non-default value', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).not.toThrow();
+    expect(config.uiOrigins).toEqual(['https://staging.war.tmad.dev']);
   });
 });
