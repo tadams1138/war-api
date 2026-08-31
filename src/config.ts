@@ -6,6 +6,7 @@
  */
 export const DEFAULT_JWT_SECRET = 'test-secret-do-not-use-in-production';
 export const DEFAULT_INTERNAL_TASK_TOKEN = 'test-internal-token';
+export const DEFAULT_UI_ORIGIN = 'http://localhost:5173';
 
 /**
  * The local-dev default for `apiBaseUrl`, port-dependent so it can't be a
@@ -51,7 +52,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     port,
     databaseUrl: env.DATABASE_URL ?? '',
-    uiOrigins: (env.UI_ORIGINS ?? 'http://localhost:5173')
+    uiOrigins: (env.UI_ORIGINS ?? DEFAULT_UI_ORIGIN)
       .split(',')
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),
@@ -120,6 +121,12 @@ const PRODUCTION_RULES: ReadonlyArray<{ failsWhen: (config: AppConfig) => boolea
     failsWhen: (config) =>
       config.apiBaseUrl !== '' && (config.apiBaseUrl.endsWith('/') || !isAbsoluteHttpUrl(config.apiBaseUrl)),
     problem: 'PUBLIC_BASE_URL must not end with a trailing slash and must be an absolute http(s) URL',
+  },
+  {
+    failsWhen: (config) =>
+      config.uiOrigins.length === 0 ||
+      (config.uiOrigins.length === 1 && config.uiOrigins[0] === DEFAULT_UI_ORIGIN),
+    problem: 'UI_ORIGINS must be set to a non-default value',
   },
 ];
 
