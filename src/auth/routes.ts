@@ -1,11 +1,32 @@
 import type { FastifyInstance } from 'fastify';
-import { beginLogin, completeCallback, currentVoter, logout, refresh, type AuthDependencies } from './authService.js';
+import { beginLogin, completeCallback, currentVoter, exchangeGoogleCode, logout, refresh, type AuthDependencies } from './authService.js';
 import { bearerAuthRoute } from './plugin.js';
 import { errorResponseSchema } from '../shared/httpOutcomes.js';
 
 const REFRESH_COOKIE = 'refresh_token';
 const STATE_COOKIE = 'oauth_state';
 const AUTH_COOKIE_PATH = '/api/v1/auth';
+
+/** The `{ error, reason }` body check #1 of §4.1's "Callback failure responses" table returns. */
+export interface OAuthDeclinedView {
+  error: string;
+  reason: string;
+}
+
+/**
+ * Unlike `voteForbiddenResponseSchema` (matchups/routes.ts), `reason` here
+ * is not a closed `enum`: spec §4.1 #1 passes the OAuth provider's `error`
+ * parameter through verbatim, since the set of codes a provider can send is
+ * not this API's vocabulary to close off.
+ */
+export const oauthDeclinedResponseSchema = {
+  type: 'object',
+  required: ['error', 'reason'],
+  properties: {
+    error: { type: 'string' },
+    reason: { type: 'string' },
+  },
+};
 
 export interface AuthRouteConfig {
   uiOrigins: string[];
@@ -38,17 +59,28 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDependencies,
     },
   );
 
-  app.get<{ Params: { provider: string }; Querystring: { code?: string; state?: string } }>(
+  app.get<{ Params: { provider: string }; Querystring: { code?: string; state?: string; error?: string } }>(
     '/auth/:provider/callback',
     // Success is a redirect with no body (spec §11.2.1 discrepancy 1: the
     // stale §7.1 200-body example is superseded by §4.1's cookie flow).
-    // Both failure paths below share the same "{ error }" shape (discrepancy 2).
-    { schema: { response: { 400: errorResponseSchema } } },
+    // The four failure responses are spec §4.1's "Callback failure
+    // responses" table, checked in that exact order below.
+    { schema: { response: { 400: errorResponseSchema, 403: oauthDeclinedResponseSchema, 502: errorResponseSchema } } },
     async (request, reply) => {
       if (request.params.provider !== 'google') {
         return reply.code(404).send();
       }
-      const { code, state } = request.query;
+      const { code, state, error } = request.query;
+
+      // #1 -- the provider declined to grant what was asked (spec §4.1 #1).
+      // Checked first and independent of the state cookie: no code is ever
+      // exchanged on this branch, so there is nothing for state validation
+      // to protect. An empty `error` (`?error=`) is treated as absent.
+      if (error) {
+        const body: OAuthDeclinedView = { error: 'authorization declined', reason: error };
+        return reply.code(403).send(body);
+      }
+
       if (!code) {
         return reply.code(400).send({ error: 'missing code' });
       }
@@ -65,7 +97,18 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDependencies,
       // cannot diverge and nothing off the request line can steer them.
       const callbackUrl = new URL(config.googleRedirectUri);
       callbackUrl.search = new URL(request.url, config.googleRedirectUri).search;
-      const result = await completeCallback(deps, { callbackUrl });
+
+      // #4 -- the error boundary is scoped to the exchange call alone (spec
+      // §4.1 #4). Whatever completeCallback does afterwards (voter upsert,
+      // refresh-token issuance) runs outside this try/catch, so a failure
+      // there keeps surfacing as an unmapped 500, exactly as before.
+      let profile;
+      try {
+        profile = await exchangeGoogleCode(deps, { callbackUrl });
+      } catch {
+        return reply.code(502).send({ error: 'authentication with Google failed' });
+      }
+      const result = await completeCallback(deps, profile);
 
       void reply.setCookie(REFRESH_COOKIE, result.refreshTokenValue, refreshCookieOptions());
       void reply.clearCookie(STATE_COOKIE, { path: AUTH_COOKIE_PATH });

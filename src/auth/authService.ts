@@ -9,7 +9,7 @@ import {
   rotateRefreshToken,
 } from './refreshTokensRepository.js';
 import { findOrCreateVoter, findVoterById, type Voter } from './votersRepository.js';
-import type { GoogleAuthProvider } from './googleProvider.js';
+import type { GoogleAuthProvider, OAuthProfile } from './googleProvider.js';
 
 export interface AuthDependencies {
   db: Kysely<Database>;
@@ -32,11 +32,22 @@ export async function beginLogin(
   return { state, authorizationUrl };
 }
 
-export async function completeCallback(
-  deps: AuthDependencies,
-  params: { callbackUrl: URL },
-): Promise<CallbackResult> {
-  const profile = await deps.google.exchangeCode(params);
+/**
+ * The one call in the callback flow that is a genuine external dependency
+ * (spec §4.1 #4: "a network round-trip to Google"). Split out from
+ * {@link completeCallback} so the route can wrap *only* this call in its
+ * error boundary — a failure here (network failure, an invalid/missing
+ * `iss`, a missing subject claim, any `openid-client`/`oauth4webapi`
+ * validation error) maps to `502`, while a failure in what comes after
+ * (voter upsert, refresh-token issuance) is this API's own fault and must
+ * keep surfacing as an unmapped `500`.
+ */
+export async function exchangeGoogleCode(deps: AuthDependencies, params: { callbackUrl: URL }): Promise<OAuthProfile> {
+  return deps.google.exchangeCode(params);
+}
+
+/** Upserts the Voter and issues a refresh-token family for an already-exchanged OAuth profile. */
+export async function completeCallback(deps: AuthDependencies, profile: OAuthProfile): Promise<CallbackResult> {
   const { voter, created } = await findOrCreateVoter(deps.db, 'google', profile);
 
   const refreshTokenValue = generateRefreshTokenValue();

@@ -176,6 +176,40 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
+  Scenario("A user declines Google's consent prompt", ({ Given, When, Then, And }) => {
+    let stateCookie: string;
+    let response: request.Response;
+
+    Given('a user who began signing in with Google', async () => {
+      await harness.app.ready();
+      const loginResponse = await request(harness.app.server).get('/api/v1/auth/google/login');
+      const cookie = extractCookieValue(loginResponse.get('Set-Cookie'), 'oauth_state');
+      if (!cookie) {
+        throw new Error('login did not set an oauth_state cookie');
+      }
+      stateCookie = cookie;
+    });
+
+    When("Google's callback reports \"access_denied\" instead of an authorization code", async () => {
+      response = await request(harness.app.server)
+        .get('/api/v1/auth/google/callback')
+        .query({ error: 'access_denied' })
+        .set('Cookie', `oauth_state=${stateCookie}`);
+    });
+
+    Then('the response status is 403', () => {
+      expect(response.status).toBe(403);
+    });
+
+    And('the reported reason is "access_denied"', () => {
+      expect((response.body as { reason?: string }).reason).toBe('access_denied');
+    });
+
+    And('no refresh token cookie is set', () => {
+      expect(extractCookieValue(response.get('Set-Cookie'), 'refresh_token')).toBeUndefined();
+    });
+  });
+
   Scenario('The SPA obtains its first JWT by exchanging the cookie', ({ Given, When, Then }) => {
     let refreshTokenValue: string;
     let refreshResponse: request.Response;

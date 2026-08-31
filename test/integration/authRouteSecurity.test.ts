@@ -145,6 +145,91 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
   });
 });
 
+/**
+ * The `502` boundary of spec §4.1 #4 -- deliberately not a Gherkin scenario
+ * (stage 1's design review reasoning: a wire-level robustness property, the
+ * same category as the redirect-URI-pinning tests above). Both the
+ * exchange-failure mapping and the downstream-failure exclusion are
+ * asserted here so the boundary's scope is pinned exactly, not just its
+ * existence.
+ */
+describe('Callback exchange failures (spec §4.1 #4)', () => {
+  let harness: TestHarness;
+
+  beforeEach(async () => {
+    await truncateAll();
+    harness = await buildTestHarness();
+    await harness.app.ready();
+  });
+
+  async function beginLogin() {
+    const agent = request(harness.app.server);
+    const loginResponse = await agent.get('/api/v1/auth/google/login');
+    const stateCookie = extractCookieValue(loginResponse.get('Set-Cookie'), 'oauth_state');
+    if (!stateCookie) {
+      throw new Error('login did not set an oauth_state cookie');
+    }
+    return { agent, stateCookie };
+  }
+
+  it('maps an openid-client/oauth4webapi validation error from the exchange to a 502, not a raw 500', async () => {
+    // Arrange: a class-typed error carrying the library's own internal
+    // error code as its message -- exactly the shape that reached three
+    // separate users' browsers as an opaque 500 (spec §4.1 #4).
+    class FakeOperationProcessingError extends Error {
+      code = 'OAUTH_INVALID_RESPONSE';
+      constructor() {
+        super('OAUTH_INVALID_RESPONSE');
+        this.name = 'OperationProcessingError';
+      }
+    }
+    const { agent, stateCookie } = await beginLogin();
+    const code = randomUUID();
+    harness.google.failNextExchange(new FakeOperationProcessingError());
+
+    // Act
+    const response = await agent.get('/api/v1/auth/google/callback').query({ code, state: stateCookie }).set('Cookie', `oauth_state=${stateCookie}`);
+
+    // Assert
+    expect(response.status).toBe(502);
+    expect((response.body as { error?: string }).error).toBe('authentication with Google failed');
+    expect((response.body as { error?: string }).error).not.toContain('OAUTH_INVALID_RESPONSE');
+  });
+
+  it('maps a network failure reaching Google to a 502', async () => {
+    // Arrange
+    const { agent, stateCookie } = await beginLogin();
+    const code = randomUUID();
+    harness.google.failNextExchange(new Error('getaddrinfo ENOTFOUND accounts.google.com'));
+
+    // Act
+    const response = await agent.get('/api/v1/auth/google/callback').query({ code, state: stateCookie }).set('Cookie', `oauth_state=${stateCookie}`);
+
+    // Assert
+    expect(response.status).toBe(502);
+    expect(extractCookieValue(response.get('Set-Cookie'), 'refresh_token')).toBeUndefined();
+  });
+
+  it('leaves a failure downstream of a successful exchange (the voter upsert) as an unmapped 500, not 502', async () => {
+    // Arrange: a provider_user_id exceeding voters.provider_user_id's
+    // VARCHAR(256) forces the insert itself to fail -- a real defect in
+    // this API's own logic, not the provider's response being unusable.
+    const { agent, stateCookie } = await beginLogin();
+    const code = randomUUID();
+    harness.google.registerCode(code, {
+      providerUserId: 'x'.repeat(300),
+      displayName: 'Downstream Failure',
+      avatarUrl: null,
+    });
+
+    // Act
+    const response = await agent.get('/api/v1/auth/google/callback').query({ code, state: stateCookie }).set('Cookie', `oauth_state=${stateCookie}`);
+
+    // Assert
+    expect(response.status).toBe(500);
+  });
+});
+
 describe('DELETE /auth/session only revokes the caller\'s own refresh-token family', () => {
   let harness: TestHarness;
 
