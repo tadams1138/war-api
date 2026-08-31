@@ -15,7 +15,7 @@ export interface OAuthProfile {
  */
 export interface GoogleAuthProvider {
   authorizationUrl(params: { state: string; redirectUri: string }): Promise<string>;
-  exchangeCode(params: { code: string; redirectUri: string }): Promise<OAuthProfile>;
+  exchangeCode(params: { callbackUrl: URL }): Promise<OAuthProfile>;
 }
 
 export class RealGoogleAuthProvider implements GoogleAuthProvider {
@@ -35,11 +35,12 @@ export class RealGoogleAuthProvider implements GoogleAuthProvider {
     return url.href;
   }
 
-  async exchangeCode(params: { code: string; redirectUri: string }): Promise<OAuthProfile> {
+  async exchangeCode(params: { callbackUrl: URL }): Promise<OAuthProfile> {
     const config = await this.configuration;
-    const currentUrl = new URL(params.redirectUri);
-    currentUrl.searchParams.set('code', params.code);
-    const tokens = await client.authorizationCodeGrant(config, currentUrl, {
+    // The real callback URL Google sent, verbatim -- authorizationCodeGrant
+    // derives redirect_uri from it (stripParams) and validates params (e.g.
+    // RFC 9207's `iss`) straight off it, so it must not be reconstructed.
+    const tokens = await client.authorizationCodeGrant(config, params.callbackUrl, {
       expectedState: client.skipStateCheck,
     });
     const claims = tokens.claims();

@@ -58,7 +58,14 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDependencies,
         return reply.code(400).send({ error: 'state mismatch' });
       }
 
-      const result = await completeCallback(deps, { code, redirectUri: config.googleRedirectUri });
+      // Google's real callback query, verbatim -- RFC 9207's `iss` and the rest,
+      // which the token-exchange library validates straight off this URL. The
+      // origin and path come from the one redirect_uri this app ever advertises
+      // (the same config value the login leg sends above), so the two legs
+      // cannot diverge and nothing off the request line can steer them.
+      const callbackUrl = new URL(config.googleRedirectUri);
+      callbackUrl.search = new URL(request.url, config.googleRedirectUri).search;
+      const result = await completeCallback(deps, { callbackUrl });
 
       void reply.setCookie(REFRESH_COOKIE, result.refreshTokenValue, refreshCookieOptions());
       void reply.clearCookie(STATE_COOKIE, { path: AUTH_COOKIE_PATH });

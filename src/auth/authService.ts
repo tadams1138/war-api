@@ -34,7 +34,7 @@ export async function beginLogin(
 
 export async function completeCallback(
   deps: AuthDependencies,
-  params: { code: string; redirectUri: string },
+  params: { callbackUrl: URL },
 ): Promise<CallbackResult> {
   const profile = await deps.google.exchangeCode(params);
   const { voter, created } = await findOrCreateVoter(deps.db, 'google', profile);
