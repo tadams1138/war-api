@@ -407,7 +407,7 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
   });
 
-  Scenario('Cannot vote on a closed War', ({ Given, When, Then }) => {
+  Scenario('Cannot vote on a closed War', ({ Given, When, Then, And }) => {
     let setup: Setup;
     let matchupId: string;
     let response: request.Response;
@@ -428,6 +428,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
     Then('the response status is 403', () => {
       expect(response.status).toBe(403);
+    });
+
+    And('the response reason is "war_not_active"', () => {
+      expect(response.body.reason).toBe('war_not_active');
     });
   });
 
@@ -456,6 +460,10 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
 
     Then('the response status is 403', () => {
       expect(response.status).toBe(403);
+    });
+
+    And('the response reason is "not_joined"', () => {
+      expect(response.body.reason).toBe('not_joined');
     });
   });
 });

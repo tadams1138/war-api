@@ -80,6 +80,31 @@ export async function listContestantsByWar(db: Kysely<Database>, warId: string):
   return rows.map((row) => toContestant(row));
 }
 
+/**
+ * Batches each War's contestant count into one query, keyed by War id (spec
+ * §11.2.1's `contestant_count` on `WarSummary`) -- mirrors
+ * `listMediaByContestants`'s batching pattern above for the same N+1 reason
+ * a page of Wars would otherwise pay. Counts every `contestants` row
+ * regardless of status (there is none to filter on), so a `draft` War's
+ * full contestant count is reported, not zero.
+ */
+export async function countContestantsByWarIds(db: Kysely<Database>, warIds: string[]): Promise<Map<string, number>> {
+  const byWar = new Map<string, number>();
+  if (warIds.length === 0) {
+    return byWar;
+  }
+  const rows = await db
+    .selectFrom('contestants')
+    .select(['war_id', (eb) => eb.fn.countAll<string>().as('count')])
+    .where('war_id', 'in', warIds)
+    .groupBy('war_id')
+    .execute();
+  for (const row of rows) {
+    byWar.set(row.war_id, Number(row.count));
+  }
+  return byWar;
+}
+
 export interface ContestantPatch {
   name?: string;
   bio?: string | null;

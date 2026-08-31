@@ -27,6 +27,23 @@ const validationErrorResponseSchema = {
   },
 };
 
+/**
+ * This route's `403` -- unlike its other `{ error }`-only 4xx responses --
+ * also carries a `reason` discriminator so a client can branch on which of
+ * the two forbidden causes occurred without matching `error`'s message text
+ * (spec §11.2.1 addendum, 2026-08-30). Scoped to this route only: `POST
+ * /wars/:id/join`'s `403` has a single cause and stays on the shared
+ * `errorResponseSchema`.
+ */
+const voteForbiddenResponseSchema = {
+  type: 'object',
+  required: ['error', 'reason'],
+  properties: {
+    error: { type: 'string' },
+    reason: { type: 'string', enum: ['war_not_active', 'not_joined'] },
+  },
+};
+
 export interface MatchupsRouteDeps {
   db: Kysely<Database>;
   auth: AuthDependencies;
@@ -78,7 +95,7 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
         400: validationErrorResponseSchema,
         409: errorResponseSchema,
         422: errorResponseSchema,
-        403: errorResponseSchema,
+        403: voteForbiddenResponseSchema,
         404: errorResponseSchema,
       },
     }),
@@ -100,9 +117,9 @@ export function registerMatchupsRoutes(app: FastifyInstance, deps: MatchupsRoute
         case 'invalidWinner':
           return reply.code(422).send({ error: 'winner_id must be a contestant in this matchup' });
         case 'warNotActive':
-          return reply.code(403).send({ error: 'War is not active' });
+          return reply.code(403).send({ error: 'War is not active', reason: 'war_not_active' });
         case 'notJoined':
-          return reply.code(403).send({ error: 'voter has not joined this War' });
+          return reply.code(403).send({ error: 'voter has not joined this War', reason: 'not_joined' });
         case 'notFound':
           return reply.code(404).send({ error: 'not found' });
         default:

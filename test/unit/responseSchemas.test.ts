@@ -86,6 +86,7 @@ describe('response body schemas serialize every field (spec §11.2.1)', () => {
       media_mode: 'image',
       contestant_schema: [{ key: 'height', label: 'Height', type: 'number' }],
       ends_at: '2026-01-01T00:00:00.000Z',
+      contestant_count: 4,
     };
     const app = buildProbeApp(warSummarySchema, fixture);
 
@@ -107,6 +108,7 @@ describe('response body schemas serialize every field (spec §11.2.1)', () => {
       media_mode: 'image',
       contestant_schema: [],
       ends_at: null,
+      contestant_count: 0,
     };
     const app = buildProbeApp(warSummarySchema, fixture);
 

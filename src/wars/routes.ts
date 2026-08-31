@@ -4,6 +4,7 @@ import type { Database } from '../db/types.js';
 import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
 import { errorResponseSchema, replyForOutcome } from '../shared/httpOutcomes.js';
+import { countContestantsByWarIds } from '../contestants/contestantsRepository.js';
 import { presentWarDetail, presentWarSummary, warDetailResponseSchema } from './warPresenter.js';
 import { activateWar, closeWar, createWarForVoter, getWar, joinWar, patchWar } from './warsService.js';
 import { closeExpiredWars, listWars } from './warsRepository.js';
@@ -40,7 +41,11 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
         limit,
       });
       const now = new Date();
-      return reply.send({ wars: wars.map((war) => presentWarSummary(war, now)) });
+      const counts = await countContestantsByWarIds(
+        db,
+        wars.map((war) => war.id),
+      );
+      return reply.send({ wars: wars.map((war) => presentWarSummary(war, now, counts.get(war.id) ?? 0)) });
     },
   );
 
@@ -59,7 +64,8 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
     if (outcome.kind === 'validationError') {
       return reply.code(422).send({ error: 'validation error', details: outcome.errors });
     }
-    return reply.code(201).send(presentWarSummary(outcome.war, new Date()));
+    // A freshly created War has no contestants yet -- creation only inserts the `wars` row.
+    return reply.code(201).send(presentWarSummary(outcome.war, new Date(), 0));
   });
 
   app.get<{ Params: { id: string } }>(
@@ -97,7 +103,8 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
       if (outcome.kind !== 'ok') {
         return replyForOutcome(reply, outcome);
       }
-      return reply.send(presentWarSummary(outcome.value, new Date()));
+      const counts = await countContestantsByWarIds(db, [outcome.value.id]);
+      return reply.send(presentWarSummary(outcome.value, new Date(), counts.get(outcome.value.id) ?? 0));
     },
   );
 
@@ -109,7 +116,8 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
       if (outcome.kind !== 'ok') {
         return replyForOutcome(reply, outcome);
       }
-      return reply.send(presentWarSummary(outcome.value, new Date()));
+      const counts = await countContestantsByWarIds(db, [outcome.value.id]);
+      return reply.send(presentWarSummary(outcome.value, new Date(), counts.get(outcome.value.id) ?? 0));
     },
   );
 
@@ -121,7 +129,8 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
       if (outcome.kind !== 'ok') {
         return replyForOutcome(reply, outcome);
       }
-      return reply.send(presentWarSummary(outcome.value, new Date()));
+      const counts = await countContestantsByWarIds(db, [outcome.value.id]);
+      return reply.send(presentWarSummary(outcome.value, new Date(), counts.get(outcome.value.id) ?? 0));
     },
   );
 
