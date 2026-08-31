@@ -9,6 +9,14 @@ import type { GoogleAuthProvider, OAuthProfile } from '../../src/auth/googleProv
 export class FakeGoogleAuthProvider implements GoogleAuthProvider {
   private readonly profilesByCode = new Map<string, OAuthProfile>();
 
+  /**
+   * The `redirectUri` most recently passed to `exchangeCode`, so tests can
+   * observe the value that would have gone into the real token-exchange
+   * request to Google -- which enforces an exact `redirect_uri` match of its
+   * own -- without a new harness.
+   */
+  lastExchangeRedirectUri: string | undefined;
+
   registerCode(code: string, profile: OAuthProfile): void {
     this.profilesByCode.set(code, profile);
   }
@@ -18,6 +26,7 @@ export class FakeGoogleAuthProvider implements GoogleAuthProvider {
   }
 
   async exchangeCode(params: { code: string; redirectUri: string }): Promise<OAuthProfile> {
+    this.lastExchangeRedirectUri = params.redirectUri;
     const profile = this.profilesByCode.get(params.code);
     if (!profile) {
       throw new Error(`no fake Google profile registered for code "${params.code}"`);

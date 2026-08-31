@@ -95,6 +95,7 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
     expect(response.status).toBeGreaterThanOrEqual(300);
     expect(response.status).toBeLessThan(400);
     expect(extractCookieValue(response.get('Set-Cookie'), 'refresh_token')).toBeTruthy();
+    expect(harness.google.lastExchangeRedirectUri).toBe('https://api.test/api/v1/auth/google/callback');
   });
 });
 
