@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertProductionConfig, loadConfig, type AppConfig } from '../../src/config.js';
+import { assertProductionConfig, defaultPublicBaseUrl, loadConfig, type AppConfig } from '../../src/config.js';
 
 function fullyPopulatedConfig(): AppConfig {
   return loadConfig({
@@ -8,6 +8,7 @@ function fullyPopulatedConfig(): AppConfig {
     INTERNAL_TASK_TOKEN: 'a-real-internal-task-token',
     GOOGLE_CLIENT_ID: 'a-real-client-id',
     GOOGLE_CLIENT_SECRET: 'a-real-client-secret',
+    PUBLIC_BASE_URL: 'https://staging.war.tmad.dev',
   } as NodeJS.ProcessEnv);
 }
 
@@ -63,5 +64,51 @@ describe('assertProductionConfig', () => {
 
     // Act & Assert
     expect(() => assertProductionConfig(config)).not.toThrow();
+  });
+
+  it('throws when apiBaseUrl is left at its localhost default for the configured port', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+    config.apiBaseUrl = defaultPublicBaseUrl(config.port);
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).toThrow(/public.*base.*url/i);
+  });
+
+  it('throws when apiBaseUrl is the empty string', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+    config.apiBaseUrl = '';
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).toThrow();
+  });
+
+  it('does not throw when apiBaseUrl is a real, non-default value, and google.redirectUri is derived from it', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).not.toThrow();
+    expect(config.apiBaseUrl).toBe('https://staging.war.tmad.dev');
+    expect(config.google.redirectUri).toBe('https://staging.war.tmad.dev/api/v1/auth/google/callback');
+  });
+
+  it('throws when apiBaseUrl has a trailing slash', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+    config.apiBaseUrl = 'https://staging.war.tmad.dev/';
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).toThrow(/trailing slash/i);
+  });
+
+  it('throws when apiBaseUrl does not parse as an absolute http(s) URL', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+    config.apiBaseUrl = 'not-a-url';
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).toThrow(/absolute http/i);
   });
 });
