@@ -95,7 +95,41 @@ describe('OAuth callback state validation (spec §5.1: "API validates state")', 
     expect(response.status).toBeGreaterThanOrEqual(300);
     expect(response.status).toBeLessThan(400);
     expect(extractCookieValue(response.get('Set-Cookie'), 'refresh_token')).toBeTruthy();
-    expect(harness.google.lastExchangeRedirectUri).toBe('https://api.test/api/v1/auth/google/callback');
+    expect(harness.google.lastExchangeCallbackUrl?.origin).toBe('https://api.test');
+    expect(harness.google.lastExchangeCallbackUrl?.pathname).toBe('/api/v1/auth/google/callback');
+  });
+
+  it('passes Google\'s real callback query parameters (e.g. iss) through to exchangeCode unchanged, not a synthetic reconstruction', async () => {
+    // Arrange
+    const { agent, stateCookie } = await beginLogin();
+    const code = randomUUID();
+    harness.google.registerCode(code, { providerUserId: 'iss-fidelity@example.com', displayName: 'Iss Fidelity', avatarUrl: null });
+
+    // Act: Google's real callback carries more than just code/state (RFC 9207's
+    // `iss`, plus `scope`/`authuser`/`prompt`) -- a naive code-only
+    // reconstruction of the callback URL would silently drop all of these.
+    const response = await agent
+      .get('/api/v1/auth/google/callback')
+      .query({
+        code,
+        state: stateCookie,
+        iss: 'https://accounts.google.com',
+        scope: 'openid email profile',
+        authuser: '0',
+        prompt: 'consent',
+      })
+      .set('Cookie', `oauth_state=${stateCookie}`);
+
+    // Assert
+    expect(response.status).toBeGreaterThanOrEqual(300);
+    expect(response.status).toBeLessThan(400);
+    const callbackUrl = harness.google.lastExchangeCallbackUrl;
+    expect(callbackUrl).toBeDefined();
+    expect(callbackUrl?.searchParams.get('code')).toBe(code);
+    expect(callbackUrl?.searchParams.get('iss')).toBe('https://accounts.google.com');
+    expect(callbackUrl?.searchParams.get('scope')).toBe('openid email profile');
+    expect(callbackUrl?.searchParams.get('authuser')).toBe('0');
+    expect(callbackUrl?.searchParams.get('prompt')).toBe('consent');
   });
 });
 

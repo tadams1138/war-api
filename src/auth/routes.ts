@@ -10,6 +10,7 @@ const AUTH_COOKIE_PATH = '/api/v1/auth';
 export interface AuthRouteConfig {
   uiOrigins: string[];
   googleRedirectUri: string;
+  apiBaseUrl: string;
 }
 
 function refreshCookieOptions() {
@@ -58,7 +59,11 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDependencies,
         return reply.code(400).send({ error: 'state mismatch' });
       }
 
-      const result = await completeCallback(deps, { code, redirectUri: config.googleRedirectUri });
+      // The real callback URL Google sent, verbatim -- not a synthetic
+      // reconstruction from just `code`, which would drop real params such
+      // as RFC 9207's `iss` that the token-exchange library validates.
+      const callbackUrl = new URL(request.url, config.apiBaseUrl);
+      const result = await completeCallback(deps, { callbackUrl });
 
       void reply.setCookie(REFRESH_COOKIE, result.refreshTokenValue, refreshCookieOptions());
       void reply.clearCookie(STATE_COOKIE, { path: AUTH_COOKIE_PATH });
