@@ -13,7 +13,7 @@ export function testConfig(): AppConfig {
     JWT_SECRET: 'test-jwt-secret',
     INTERNAL_TASK_TOKEN: 'test-internal-token',
     S3_PUBLIC_BASE_URL: 'https://cdn.test',
-    GOOGLE_REDIRECT_URI: 'https://api.test/api/v1/auth/google/callback',
+    PUBLIC_BASE_URL: 'https://api.test',
   } as NodeJS.ProcessEnv);
 }
 

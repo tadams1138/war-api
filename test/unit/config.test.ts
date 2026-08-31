@@ -8,6 +8,7 @@ function fullyPopulatedConfig(): AppConfig {
     INTERNAL_TASK_TOKEN: 'a-real-internal-task-token',
     GOOGLE_CLIENT_ID: 'a-real-client-id',
     GOOGLE_CLIENT_SECRET: 'a-real-client-secret',
+    PUBLIC_BASE_URL: 'https://staging.war.tmad.dev',
   } as NodeJS.ProcessEnv);
 }
 
@@ -63,5 +64,33 @@ describe('assertProductionConfig', () => {
 
     // Act & Assert
     expect(() => assertProductionConfig(config)).not.toThrow();
+  });
+
+  it('throws when publicBaseUrl is left at its localhost default for the configured port', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+    config.publicBaseUrl = `http://localhost:${config.port}`;
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).toThrow(/public.*base.*url/i);
+  });
+
+  it('throws when publicBaseUrl is the empty string', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+    config.publicBaseUrl = '';
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).toThrow();
+  });
+
+  it('does not throw when publicBaseUrl is a real, non-default value, and google.redirectUri is derived from it', () => {
+    // Arrange
+    const config = fullyPopulatedConfig();
+
+    // Act & Assert
+    expect(() => assertProductionConfig(config)).not.toThrow();
+    expect(config.publicBaseUrl).toBe('https://staging.war.tmad.dev');
+    expect(config.google.redirectUri).toBe('https://staging.war.tmad.dev/api/v1/auth/google/callback');
   });
 });

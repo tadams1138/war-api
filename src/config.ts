@@ -7,12 +7,22 @@
 export const DEFAULT_JWT_SECRET = 'test-secret-do-not-use-in-production';
 export const DEFAULT_INTERNAL_TASK_TOKEN = 'test-internal-token';
 
+/**
+ * The local-dev default for `publicBaseUrl`, port-dependent so it can't be a
+ * plain identity constant like `DEFAULT_JWT_SECRET`. Shared by `loadConfig`
+ * and `assertProductionConfig` so the two can't drift apart.
+ */
+function defaultPublicBaseUrl(port: number): string {
+  return `http://localhost:${port}`;
+}
+
 export interface AppConfig {
   port: number;
   databaseUrl: string;
   uiOrigins: string[];
   jwtSecret: string;
   jwtIssuer: string;
+  publicBaseUrl: string;
   google: {
     clientId: string;
     clientSecret: string;
@@ -30,8 +40,11 @@ export interface AppConfig {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const port = Number(env.PORT ?? 3000);
+  const publicBaseUrl = env.PUBLIC_BASE_URL ?? defaultPublicBaseUrl(port);
+
   return {
-    port: Number(env.PORT ?? 3000),
+    port,
     databaseUrl: env.DATABASE_URL ?? '',
     uiOrigins: (env.UI_ORIGINS ?? 'http://localhost:5173')
       .split(',')
@@ -39,10 +52,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       .filter((origin) => origin.length > 0),
     jwtSecret: env.JWT_SECRET ?? DEFAULT_JWT_SECRET,
     jwtIssuer: env.JWT_ISSUER ?? 'war-api',
+    publicBaseUrl,
     google: {
       clientId: env.GOOGLE_CLIENT_ID ?? '',
       clientSecret: env.GOOGLE_CLIENT_SECRET ?? '',
-      redirectUri: env.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/api/v1/auth/google/callback',
+      redirectUri: `${publicBaseUrl}/api/v1/auth/google/callback`,
     },
     internalTaskToken: env.INTERNAL_TASK_TOKEN ?? DEFAULT_INTERNAL_TASK_TOKEN,
     s3: {
@@ -77,6 +91,9 @@ export function assertProductionConfig(config: AppConfig): void {
   }
   if (!config.google.clientId || !config.google.clientSecret) {
     problems.push('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set');
+  }
+  if (!config.publicBaseUrl || config.publicBaseUrl === defaultPublicBaseUrl(config.port)) {
+    problems.push('PUBLIC_BASE_URL must be set to a non-default value');
   }
 
   if (problems.length > 0) {
