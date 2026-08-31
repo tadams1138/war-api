@@ -9,7 +9,7 @@ const AUTH_COOKIE_PATH = '/api/v1/auth';
 
 /** The `{ error, reason }` body check #1 of §4.1's "Callback failure responses" table returns. */
 export interface OAuthDeclinedView {
-  error: string;
+  error: 'authorization declined';
   reason: string;
 }
 
@@ -100,15 +100,19 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDependencies,
 
       // #4 -- the error boundary is scoped to the exchange call alone (spec
       // §4.1 #4). Whatever completeCallback does afterwards (voter upsert,
-      // refresh-token issuance) runs outside this try/catch, so a failure
-      // there keeps surfacing as an unmapped 500, exactly as before.
-      let profile;
-      try {
-        profile = await exchangeGoogleCode(deps, { callbackUrl });
-      } catch {
+      // refresh-token issuance) runs outside this check, so a failure there
+      // keeps surfacing as an unmapped 500, exactly as before.
+      const exchange = await exchangeGoogleCode(deps, { callbackUrl });
+      if (exchange.kind === 'exchangeFailed') {
+        // The 502 body stays deliberately vague (spec §4.1 #4: none of this
+        // is safe to show verbatim) -- but the real cause is still worth a
+        // server-side record. `request.log` is Fastify's no-op logger under
+        // this app's current `logger: false`, so this costs nothing today
+        // and activates the moment logging is turned on.
+        request.log.error({ err: exchange.cause }, 'google code exchange failed');
         return reply.code(502).send({ error: 'authentication with Google failed' });
       }
-      const result = await completeCallback(deps, profile);
+      const result = await completeCallback(deps, exchange.profile);
 
       void reply.setCookie(REFRESH_COOKIE, result.refreshTokenValue, refreshCookieOptions());
       void reply.clearCookie(STATE_COOKIE, { path: AUTH_COOKIE_PATH });

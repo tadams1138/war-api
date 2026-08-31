@@ -5,7 +5,7 @@ import { describeFeature, loadFeature } from '@amiceli/vitest-cucumber';
 import { hashRefreshToken } from '../../src/auth/refreshTokens.js';
 import { findRefreshTokenByHash } from '../../src/auth/refreshTokensRepository.js';
 import { findVoterById } from '../../src/auth/votersRepository.js';
-import { loginAndCallback, postRefresh } from '../setup/authFlow.js';
+import { beginLogin, loginAndCallback, postRefresh } from '../setup/authFlow.js';
 import { buildTestHarness, type TestHarness } from '../setup/testApp.js';
 import { truncateAll } from '../setup/testDb.js';
 import { extractCookieValue, findSetCookie } from '../setup/httpHelpers.js';
@@ -181,13 +181,8 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     let response: request.Response;
 
     Given('a user who began signing in with Google', async () => {
-      await harness.app.ready();
-      const loginResponse = await request(harness.app.server).get('/api/v1/auth/google/login');
-      const cookie = extractCookieValue(loginResponse.get('Set-Cookie'), 'oauth_state');
-      if (!cookie) {
-        throw new Error('login did not set an oauth_state cookie');
-      }
-      stateCookie = cookie;
+      const begun = await beginLogin(harness);
+      stateCookie = begun.stateCookie;
     });
 
     When("Google's callback reports \"access_denied\" instead of an authorization code", async () => {
@@ -202,7 +197,11 @@ describeFeature(feature, ({ Scenario, BeforeEachScenario }) => {
     });
 
     And('the reported reason is "access_denied"', () => {
-      expect((response.body as { reason?: string }).reason).toBe('access_denied');
+      // Pins both halves of §4.1 #1's body (design review finding 4):
+      // "error" is the fixed contract string, "reason" is the provider's
+      // code passed through verbatim.
+      expect((response.body as { error?: string; reason?: string }).error).toBe('authorization declined');
+      expect((response.body as { error?: string; reason?: string }).reason).toBe('access_denied');
     });
 
     And('no refresh token cookie is set', () => {
