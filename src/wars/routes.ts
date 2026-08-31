@@ -4,7 +4,7 @@ import type { Database } from '../db/types.js';
 import { bearerAuthRoute } from '../auth/plugin.js';
 import type { AuthDependencies } from '../auth/authService.js';
 import { errorResponseSchema, replyForOutcome } from '../shared/httpOutcomes.js';
-import { countContestantsByWarIds } from '../contestants/contestantsRepository.js';
+import { countContestantsByWarIds, countContestantsForWar } from '../contestants/contestantsRepository.js';
 import { presentWarDetail, presentWarSummary, warDetailResponseSchema } from './warPresenter.js';
 import { activateWar, closeWar, createWarForVoter, getWar, joinWar, patchWar } from './warsService.js';
 import { closeExpiredWars, listWars } from './warsRepository.js';
@@ -103,8 +103,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
       if (outcome.kind !== 'ok') {
         return replyForOutcome(reply, outcome);
       }
-      const counts = await countContestantsByWarIds(db, [outcome.value.id]);
-      return reply.send(presentWarSummary(outcome.value, new Date(), counts.get(outcome.value.id) ?? 0));
+      return reply.send(presentWarSummary(outcome.value, new Date(), await countContestantsForWar(db, outcome.value.id)));
     },
   );
 
@@ -116,8 +115,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
       if (outcome.kind !== 'ok') {
         return replyForOutcome(reply, outcome);
       }
-      const counts = await countContestantsByWarIds(db, [outcome.value.id]);
-      return reply.send(presentWarSummary(outcome.value, new Date(), counts.get(outcome.value.id) ?? 0));
+      return reply.send(presentWarSummary(outcome.value, new Date(), await countContestantsForWar(db, outcome.value.id)));
     },
   );
 
@@ -129,8 +127,7 @@ export function registerWarsRoutes(app: FastifyInstance, deps: WarsRouteDeps): v
       if (outcome.kind !== 'ok') {
         return replyForOutcome(reply, outcome);
       }
-      const counts = await countContestantsByWarIds(db, [outcome.value.id]);
-      return reply.send(presentWarSummary(outcome.value, new Date(), counts.get(outcome.value.id) ?? 0));
+      return reply.send(presentWarSummary(outcome.value, new Date(), await countContestantsForWar(db, outcome.value.id)));
     },
   );
 

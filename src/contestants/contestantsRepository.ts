@@ -105,6 +105,11 @@ export async function countContestantsByWarIds(db: Kysely<Database>, warIds: str
   return byWar;
 }
 
+/** Single-War convenience over `countContestantsByWarIds` -- one query shape, two call shapes. */
+export async function countContestantsForWar(db: Kysely<Database>, warId: string): Promise<number> {
+  return (await countContestantsByWarIds(db, [warId])).get(warId) ?? 0;
+}
+
 export interface ContestantPatch {
   name?: string;
   bio?: string | null;
