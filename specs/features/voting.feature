@@ -70,9 +70,11 @@ Feature: Voting
     Given a War in "closed" status
     When a voter POSTs a vote
     Then the response status is 403
+    And the response reason is "war_not_active"
 
   Scenario: Non-joined voter cannot vote
     Given an active War
     And an authenticated voter who has not joined
     When they POST a vote
     Then the response status is 403
+    And the response reason is "not_joined"
